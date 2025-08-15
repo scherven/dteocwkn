@@ -25,17 +25,17 @@ public class Hand : MonoBehaviour
 
         for (int i = -nLeft; i < 0; i++)
         {
-            MakeCard(new Vector3(i * 1f, 0.2f * (i + 1) - 0.1f, 0), new Vector3(0, 0, tilt * -i));
+            MakeCard(new Vector3(i * 1f, 0.2f * (i + 1) - 0.1f, -2), new Vector3(0, 0, tilt * -i));
         }
 
         for (int i = 0; i < nMiddle; i++)
         {
-            MakeCard(new Vector3(0, 0, 0), new Vector3(0, 0, 0)); // Middle cards are upright
+            MakeCard(new Vector3(0, 0, -2), new Vector3(0, 0, 0)); // Middle cards are upright
         }
         
         for (int i = 1; i < nRight + 1; i++)
         {
-            MakeCard(new Vector3(i * 1f, 0.2f * -(i - 1) - 0.1f, 0), new Vector3(0, 0, -tilt * i));
+            MakeCard(new Vector3(i * 1f, 0.2f * -(i - 1) - 0.1f, -2), new Vector3(0, 0, -tilt * i));
         }
     }
 

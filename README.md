@@ -1,6 +1,19 @@
 # dteocwkn
 it's a deckbuilder...it's a townbuilder....no, it's superman!
 
+# Task List
+
+- [x] make the hand generate above the world
+- [x] make the tiles generate closer together
+- [ ] add hovering a given tile
+  - [x] highlights around the tile
+  - [ ] after 1 second: that brings up property box
+  - [ ] (later) property box stays if you hover over it?
+  - [ ] (later) clicking tile centers & brings up things that are on it?
+- [ ] put things on the different cards
+- [ ] when you mouse over them they go from tucked together to spread out so you can read them
+- [ ] when you hover one while it's spread out it zooms in a bit or you can click to have a full inspect go on
+
 
 
 ## Ideas
