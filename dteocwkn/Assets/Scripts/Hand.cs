@@ -2,9 +2,12 @@ using UnityEngine;
 
 public class Hand : MonoBehaviour
 {
-    public Transform card;
+    public RectTransform cardPrefab;
+    public Canvas targetCanvas;
     public int nCards;
     public int tilt;
+    public float xSpacing;
+    public float ySpacing;
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
@@ -25,7 +28,7 @@ public class Hand : MonoBehaviour
 
         for (int i = -nLeft; i < 0; i++)
         {
-            MakeCard(new Vector3(i * 1f, 0.2f * (i + 1) - 0.1f, -2), new Vector3(0, 0, tilt * -i));
+            MakeCard(new Vector3(i * xSpacing, ySpacing * i, -2), new Vector3(0, 0, tilt * -i));
         }
 
         for (int i = 0; i < nMiddle; i++)
@@ -35,7 +38,7 @@ public class Hand : MonoBehaviour
         
         for (int i = 1; i < nRight + 1; i++)
         {
-            MakeCard(new Vector3(i * 1f, 0.2f * -(i - 1) - 0.1f, -2), new Vector3(0, 0, -tilt * i));
+            MakeCard(new Vector3(i * xSpacing, ySpacing * -i, -2), new Vector3(0, 0, -tilt * i));
         }
     }
 
@@ -47,7 +50,7 @@ public class Hand : MonoBehaviour
     
     void MakeCard(Vector3 position, Vector3 rotation)
     {
-        Transform newCard = Instantiate(card, position, Quaternion.Euler(rotation), transform);
-        newCard.localPosition = position;
+        RectTransform newCard = Instantiate(cardPrefab, position, Quaternion.Euler(rotation), targetCanvas.transform.Find("HandHolder"));
+        newCard.anchoredPosition = position;
     }
 }
