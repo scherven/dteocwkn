@@ -1,6 +1,22 @@
 # dteocwkn
 it's a deckbuilder...it's a townbuilder....no, it's superman!
 
+# STEPS FOR CURRENT MVP
+
+- [ ] make cards be on their own layer (hud?)
+- [ ] make player have deck (bottom right) w/ 10 total cards
+- [ ] put two buttons in bottom right:
+  - [ ] "play all resource cards"
+  - [ ] "end turn"
+- [ ] put resource tracker in top right (all wood for now)
+- [ ] put market in top left with two things
+  - [ ] house
+  - [ ] stockpile
+- [ ] make things you buy go into your deck and get drawn
+- [ ] put your discard pile next to your deck
+
+
+
 # Task List
 
 - [x] make the hand generate above the world
