@@ -1,18 +1,20 @@
 using UnityEngine;
+using System.Collections.Generic;
+ using UnityEngine.UI;
 
 public class Card : MonoBehaviour
 {
-    public Sprite card;
-    
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public CardType type;
+    public List<Sprite> images;
+
+    public Card(CardType type)
     {
-        
+        this.type = type;
     }
 
-    // Update is called once per frame
-    void Update()
+    public void SetImage()
     {
-        
+        Image image = GetComponent<Image>();
+        image.sprite = images[(int)type];
     }
 }
