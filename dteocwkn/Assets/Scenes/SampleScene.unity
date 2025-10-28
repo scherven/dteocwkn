@@ -339,7 +339,9 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Start Turn
+  m_text: 'Tick
+
+'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -520,7 +522,6 @@ GameObject:
   m_Component:
   - component: {fileID: 564181000}
   - component: {fileID: 564180999}
-  - component: {fileID: 564181001}
   m_Layer: 0
   m_Name: Game
   m_TagString: Untagged
@@ -541,10 +542,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   deckMaker: 0a00000005000000
-  deck: []
-  discardPile: []
-  hand: []
+  deck: 
+  discardPile: 
+  hand: {fileID: 1211875426}
   handSize: 5
+  resourceText: {fileID: 1923609009}
 --- !u!4 &564181000
 Transform:
   m_ObjectHideFlags: 0
@@ -560,24 +562,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &564181001
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 564180998}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4d88a77c98e4d4124ba6c01de00c8422, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  cardPrefab: {fileID: 6177358977692390536, guid: d407ee5519f6e479ab2e3418eed2e8e3, type: 3}
-  targetCanvas: {fileID: 188891232}
-  nCards: 0
-  tilt: 0
-  xSpacing: 100
-  ySpacing: 0
 --- !u!1 &575021617
 GameObject:
   m_ObjectHideFlags: 0
@@ -962,6 +946,56 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1211875425
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1211875427}
+  - component: {fileID: 1211875426}
+  m_Layer: 0
+  m_Name: Hand
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1211875426
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1211875425}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4d88a77c98e4d4124ba6c01de00c8422, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cardPrefab: {fileID: 6177358977692390536, guid: d407ee5519f6e479ab2e3418eed2e8e3, type: 3}
+  targetCanvas: {fileID: 188891232}
+  tilt: 0
+  xSpacing: 100
+  ySpacing: 0
+  cards: 
+--- !u!4 &1211875427
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1211875425}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 794.22095, y: 158.0411, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1245691093
 GameObject:
   m_ObjectHideFlags: 0
@@ -1114,10 +1148,10 @@ RectTransform:
   m_Father: {fileID: 188891233}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0}
-  m_AnchorMax: {x: 0.5, y: 1}
-  m_AnchoredPosition: {x: -0, y: -226}
-  m_SizeDelta: {x: 100, y: -462}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0}
+  m_AnchoredPosition: {x: 0, y: 15}
+  m_SizeDelta: {x: 100, y: 150}
+  m_Pivot: {x: 0.5, y: 0}
 --- !u!1 &1683088042
 GameObject:
   m_ObjectHideFlags: 0
@@ -1131,7 +1165,7 @@ GameObject:
   - component: {fileID: 1683088045}
   - component: {fileID: 1683088044}
   m_Layer: 5
-  m_Name: End Turn
+  m_Name: Tick
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1200,7 +1234,19 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1683088045}
   m_OnClick:
     m_PersistentCalls:
-      m_Calls: []
+      m_Calls:
+      - m_Target: {fileID: 564180999}
+        m_TargetAssemblyTypeName: Game, Assembly-CSharp
+        m_MethodName: Tick
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &1683088045
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1552,3 +1598,4 @@ SceneRoots:
   - {fileID: 1712875936}
   - {fileID: 188891233}
   - {fileID: 564181000}
+  - {fileID: 1211875427}

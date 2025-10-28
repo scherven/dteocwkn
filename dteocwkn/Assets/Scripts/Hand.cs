@@ -10,9 +10,23 @@ public class Hand : MonoBehaviour
     public float ySpacing;
     public List<CardType> cards;
 
+    void Start()
+    {
+        cards = new List<CardType>();
+    }
+
     public void MakeHand()
     {
+        // Clear existing visual cards first
+        Transform handHolder = targetCanvas.transform.Find("HandHolder");
+        foreach (Transform child in handHolder)
+        {
+            Destroy(child.gameObject);
+        }
+
         int nCards = cards.Count;
+        if (nCards == 0) return;
+
         int nLeft, nMiddle, nRight;
         if (nCards % 2 == 1)
         {
@@ -35,7 +49,7 @@ public class Hand : MonoBehaviour
 
         for (int i = 0; i < nMiddle; i++)
         {
-            MakeCard(new Vector3(0, 0, -2), new Vector3(0, 0, 0), cardIdx++); // Middle cards are upright
+            MakeCard(new Vector3(0, 0, -2), new Vector3(0, 0, 0), cardIdx++);
         }
 
         for (int i = 1; i < nRight + 1; i++)
@@ -67,5 +81,38 @@ public class Hand : MonoBehaviour
         {
             Destroy(child.gameObject);
         }
+    }
+
+    public Dictionary<ResourceType, int> ClearResourceCards(List<CardType> discardPile)
+    {
+        Dictionary<ResourceType, int> resourceCounts = new Dictionary<ResourceType, int>();
+
+        foreach (ResourceType resource in System.Enum.GetValues(typeof(ResourceType)))
+        {
+            resourceCounts[resource] = 0;
+        }
+
+        // Convert all cards to resources
+        foreach (CardType card in cards)
+        {
+            ResourceType resourceType = CardTypeToResourceType(card);
+            resourceCounts[resourceType]++;
+            discardPile.Add(card);
+        }
+
+        // Clear the hand
+        cards.Clear();
+        foreach (Transform child in targetCanvas.transform.Find("HandHolder"))
+        {
+            Destroy(child.gameObject);
+        }
+
+        return resourceCounts;
+    }
+
+    private ResourceType CardTypeToResourceType(CardType cardType)
+    {
+        // Convert CardType to ResourceType (they should match by enum value)
+        return (ResourceType)((int)cardType);
     }
 }
