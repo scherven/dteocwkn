@@ -14,6 +14,7 @@ it's a deckbuilder...it's a townbuilder....no, it's superman!
   - [ ] stockpile
 - [ ] make things you buy go into your deck and get drawn
 - [ ] put your discard pile next to your deck
+- [ ] add runes somehow
 
 
 

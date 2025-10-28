@@ -1,21 +1,30 @@
 using UnityEngine;
-using UnityEngine.EventSystems;
 
-public class Tile : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+public class Tile : MonoBehaviour
 {
-    public Sprite tile;
     private bool highlighted = false;
     private float highlightOpacity = 0.0f;
+    private Material tileMaterial;
+    private Color baseColor;
+    private Color highlightColor = new Color(1f, 1f, 0.5f); // Yellowish highlight
 
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-
+        // Get the material from the MeshRenderer
+        MeshRenderer renderer = GetComponent<MeshRenderer>();
+        if (renderer != null)
+        {
+            // Create a new material instance so each tile has its own
+            tileMaterial = new Material(renderer.material);
+            renderer.material = tileMaterial;
+            baseColor = tileMaterial.color;
+        }
     }
 
-    // Update is called once per frame
     void Update()
     {
+        if (tileMaterial == null) return;
+
         if (highlighted && highlightOpacity < 1f)
         {
             highlightOpacity += Time.deltaTime * 4;
@@ -26,21 +35,13 @@ public class Tile : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
         }
 
         highlightOpacity = Mathf.Clamp01(highlightOpacity);
-        transform.Find("Highlight").GetComponent<SpriteRenderer>().color = new Color(1f, 1f, 1f, highlightOpacity);
+        
+        // Blend between base color and highlight color
+        tileMaterial.color = Color.Lerp(baseColor, highlightColor, highlightOpacity);
     }
 
     public void Highlight(bool highlight)
     {
         highlighted = highlight;
-    }
-
-    public void OnPointerEnter(PointerEventData eventData)
-    {
-        Highlight(true);
-    }
-
-    public void OnPointerExit(PointerEventData eventData)
-    {
-        Highlight(false);
     }
 }
