@@ -1,6 +1,20 @@
 # dteocwkn
 it's a deckbuilder...it's a townbuilder....no, it's superman!
 
+# Current Idea:
+
+- [ ] You start with 1 person
+- [ ] All your resources go onto the "starting square" (0, 0): holds max of 10 wood and 5 stone
+- [ ] People build things
+- [ ] House costs 5 wood
+- [ ] Start with no stone
+- [ ] House: the card gives you +1 people
+  - [ ] each house has room for 3 people
+  - [ ] can go max 1 over limit (since you start with 1 person and no house)
+- [ ] Cards gradually accumulate in your hand
+
+
+
 # STEPS FOR CURRENT MVP
 
 - [ ] make cards be on their own layer (hud?)

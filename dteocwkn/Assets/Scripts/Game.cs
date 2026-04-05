@@ -11,6 +11,7 @@ public class Game : MonoBehaviour
     public int handSize;
     public Dictionary<ResourceType, int> resources;
     public TextMeshProUGUI resourceText;
+    public Transform holding;
 
     void Start()
     {
@@ -115,10 +116,15 @@ public class Game : MonoBehaviour
         {
             resources[entry.Key] += entry.Value;
         }
-        
+
         hand.MakeHand();
         UpdateResourceDisplay();
         Debug.Log("Auto: Converted cards to resources");
+    }
+    
+    public void House()
+    {
+        
     }
 
     void UpdateResourceDisplay()
