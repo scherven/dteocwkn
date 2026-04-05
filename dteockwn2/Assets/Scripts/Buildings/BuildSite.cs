@@ -113,7 +113,8 @@ public class BuildSite : MonoBehaviour
         GridManager.Instance?.RebakeNavMesh();
 
         if (Definition.associatedCard != null)
-            DeckManager.Instance.AddCardToDeck(Definition.associatedCard);
+            DeckManager.Instance.AddCardToDeck(
+                Definition.associatedCard.CreateBoundInstance(transform.position));
 
         GameEvents.RaiseBuildingCompleted(Definition);
 
@@ -168,4 +169,6 @@ public class BuildSite : MonoBehaviour
         ColorUtility.TryParseHtmlString("#" + hex, out Color c);
         return c;
     }
+
+
 }

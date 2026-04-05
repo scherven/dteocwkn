@@ -198,7 +198,16 @@ public class GameBootstrap : MonoBehaviour
             cottageDef.constructionTimeBase = 25f;
             cottageDef.type                = BuildingType.Housing;
             cottageDef.housingCapacity     = 2;
-            cottageDef.associatedCard      = stoneCard; // adds a Stone card to the deck on completion
+
+            // Template card — BuildSite.Complete calls CreateBoundInstance which
+            // stamps the real cottage position into a fresh SpawnVillagerEffect copy.
+            var cottageEffect = ScriptableObject.CreateInstance<SpawnVillagerEffect>();
+            var cottageCard               = ScriptableObject.CreateInstance<CardData>();
+            cottageCard.cardName          = "Cottage";
+            cottageCard.description       = "Send two villagers home. A new villager is born.";
+            cottageCard.type              = CardType.Villager;
+            cottageCard.effect            = cottageEffect;
+            cottageDef.associatedCard     = cottageCard;
         }
     }
 
