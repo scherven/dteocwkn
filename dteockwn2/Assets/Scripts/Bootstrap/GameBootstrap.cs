@@ -183,6 +183,7 @@ public class GameBootstrap : MonoBehaviour
             woodcutterDef.constructionTimeBase = 20f;
             woodcutterDef.type                = BuildingType.Job;
             woodcutterDef.jobSlots            = 1;
+            woodcutterDef.associatedCard      = woodCard; // adds a Wood card to the deck on completion
         }
 
         if (cottageDef == null)
@@ -197,6 +198,7 @@ public class GameBootstrap : MonoBehaviour
             cottageDef.constructionTimeBase = 25f;
             cottageDef.type                = BuildingType.Housing;
             cottageDef.housingCapacity     = 2;
+            cottageDef.associatedCard      = stoneCard; // adds a Stone card to the deck on completion
         }
     }
 

@@ -25,7 +25,7 @@ public class OrbitMode : ICameraMode
     const float MousePanScale = 0.006f; // middle-mouse drag sensitivity (× distance)
     const float ZoomFraction  = 0.18f;  // scroll moves this fraction of current distance
     const float ZoomCursorPull= 0.35f;  // how far focus snaps toward cursor on scroll-in
-    const float RotSpeed      = 140f;   // degrees / sec
+    const float RotSpeed      = 280f;   // degrees / sec
     const float LerpFast      = 18f;    // zoom + rotate
     const float LerpSlow      = 12f;    // pan
 
