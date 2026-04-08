@@ -6,7 +6,7 @@ public class BuildingManager : MonoBehaviour
     public static BuildingManager Instance { get; private set; }
 
     // All completed buildings indexed by definition for stat queries.
-    readonly List<(BuildingDefinition def, Vector3 pos)> _buildings = new();
+    readonly List<(BuildingDefinition def, Vector3 pos, GameObject go)> _buildings = new();
 
     [Tooltip("Position of the storehouse. Set by Bootstrap at startup.")]
     public Vector3 StorehousePosition { get; private set; } = Vector3.zero;
@@ -27,12 +27,24 @@ public class BuildingManager : MonoBehaviour
 
     public void SetStorehousePosition(Vector3 pos) => StorehousePosition = pos;
 
-    public void RegisterBuilding(BuildingDefinition def, Vector3 pos)
+    public void RegisterBuilding(BuildingDefinition def, Vector3 pos, GameObject go)
     {
-        _buildings.Add((def, pos));
+        _buildings.Add((def, pos, go));
         TotalHousingCapacity += def.housingCapacity;
         TotalJobSlots        += def.jobSlots;
     }
 
-    public IReadOnlyList<(BuildingDefinition def, Vector3 pos)> AllBuildings => _buildings;
+    /// <summary>
+    /// Returns the visual GameObject of the building whose position is within
+    /// <paramref name="tolerance"/> units of <paramref name="pos"/>, or null.
+    /// </summary>
+    public GameObject GetBuildingAt(Vector3 pos, float tolerance = 0.5f)
+    {
+        foreach (var b in _buildings)
+            if (Vector3.Distance(b.pos, pos) < tolerance)
+                return b.go;
+        return null;
+    }
+
+    public IReadOnlyList<(BuildingDefinition def, Vector3 pos, GameObject go)> AllBuildings => _buildings;
 }

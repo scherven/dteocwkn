@@ -38,7 +38,8 @@ public class MarketManager : MonoBehaviour
 
     /// <summary>
     /// Called by MarketUI when the player clicks Build.
-    /// Returns true and enters placement mode if the player can afford it.
+    /// Checks material cost, enters placement mode. On confirm, the BuildSite
+    /// is also added to ConstructionQueue (handled in PlacementMode.Confirm).
     /// </summary>
     public bool TryPurchase(BuildingDefinition def)
     {

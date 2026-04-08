@@ -124,6 +124,7 @@ public class MarketUI : MonoBehaviour
         foreach (var c in def.materialCost)
             sb.Append($"{c.type}: {c.amount}  ");
         sb.Append("</color>");
+        sb.Append($"  <color=#FFD700>\u26d3 {def.hammerCost}</color>");
         return sb.ToString();
     }
 }

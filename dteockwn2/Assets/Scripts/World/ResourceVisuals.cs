@@ -5,6 +5,7 @@ public static class ResourceVisuals
 {
     static Material _woodMat;
     static Material _stoneMat;
+    static Material _foodMat;
 
     public static GameObject Spawn(ResourceType type, Vector3 pos)
     {
@@ -20,6 +21,11 @@ public static class ResourceVisuals
                 go = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 go.transform.localScale = Vector3.one * 0.4f;
                 go.GetComponent<Renderer>().material = StoneMat;
+                break;
+            case ResourceType.Food:
+                go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                go.transform.localScale = Vector3.one * 0.35f;
+                go.GetComponent<Renderer>().material = FoodMat;
                 break;
             default:
                 go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -43,6 +49,7 @@ public static class ResourceVisuals
 
     static Material WoodMat  => _woodMat  ??= CreateUnlit(HexColor("8B5E3C"));
     static Material StoneMat => _stoneMat ??= CreateUnlit(HexColor("888888"));
+    static Material FoodMat  => _foodMat  ??= CreateUnlit(HexColor("D4A820")); // golden grain
 
     public static Color HexColor(string hex)
     {

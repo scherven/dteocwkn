@@ -24,7 +24,11 @@ public class GameEvents : MonoBehaviour
     public static event Action<CardData> OnCardDrawn;
     public static event Action<CardData> OnCardAddedToDeck;
     public static event Action OnDeckReshuffled;
+    public static event Action OnHandDiscarded;
     public static event Action<int> OnVillagerCountChanged;
+    public static event Action<int> OnHammersChanged;
+    public static event Action<TurnPhase> OnTurnPhaseChanged;
+    public static event Action<Season> OnSeasonChanged;
 
     public static void RaiseResourceAdded(ResourceType t, int amount)       => OnResourceAdded?.Invoke(t, amount);
     public static void RaiseResourceConsumed(ResourceType t, int amount)    => OnResourceConsumed?.Invoke(t, amount);
@@ -35,5 +39,9 @@ public class GameEvents : MonoBehaviour
     public static void RaiseCardDrawn(CardData card)                        => OnCardDrawn?.Invoke(card);
     public static void RaiseCardAddedToDeck(CardData card)                  => OnCardAddedToDeck?.Invoke(card);
     public static void RaiseDeckReshuffled()                                => OnDeckReshuffled?.Invoke();
+    public static void RaiseHandDiscarded()                                 => OnHandDiscarded?.Invoke();
     public static void RaiseVillagerCountChanged(int count)                 => OnVillagerCountChanged?.Invoke(count);
+    public static void RaiseHammersChanged(int total)                       => OnHammersChanged?.Invoke(total);
+    public static void RaiseTurnPhaseChanged(TurnPhase phase)               => OnTurnPhaseChanged?.Invoke(phase);
+    public static void RaiseSeasonChanged(Season season)                    => OnSeasonChanged?.Invoke(season);
 }

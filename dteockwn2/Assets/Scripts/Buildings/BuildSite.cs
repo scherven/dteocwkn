@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 /// <summary>
@@ -11,12 +12,24 @@ public class BuildSite : MonoBehaviour
 
     public bool IsComplete { get; private set; }
 
+    public int HammerCost     { get; private set; }
+    public int HammersApplied { get; private set; }
+
+    public float HammerProgressFraction =>
+        HammerCost > 0 ? (float)HammersApplied / HammerCost : 1f;
+
     int _materialsRequired;
     int _materialsDelivered;
 
+    // Per-type tracking for the label
+    readonly Dictionary<ResourceType, int> _requiredByType  = new();
+    readonly Dictionary<ResourceType, int> _deliveredByType = new();
+
     // Visual roots
-    GameObject _scaffoldVisual;
-    GameObject _completedVisual;
+    GameObject         _scaffoldVisual;
+    GameObject         _completedVisual;
+    GameObject         _hammerProgressBar;
+    TextMeshPro        _requirementsLabel;
 
     // Materials piled up at the site (destroyed on completion)
     readonly List<GameObject> _pile = new();
@@ -25,15 +38,30 @@ public class BuildSite : MonoBehaviour
     {
         Definition = def;
         transform.position = worldPos;
+        HammerCost = def.hammerCost;
+
+        // Trigger collider so the player can click this site to apply a hammer
+        var clickCol = gameObject.AddComponent<BoxCollider>();
+        clickCol.isTrigger = true;
+        clickCol.size      = new Vector3(def.widthCells, 2.5f, def.depthCells);
+        clickCol.center    = new Vector3(0f, 1.25f, 0f);
 
         _scaffoldVisual  = CreateOpenBox("Scaffold",      def, worldPos, HexColor("F0C040"));
         _completedVisual = CreateOpenBox(def.buildingName, def, worldPos, HexColor("777777"),
                                          addObstacle: true);
         _completedVisual.SetActive(false);
 
-        foreach (var cost in def.materialCost)
-            _materialsRequired += cost.amount;
+        CreateHammerProgressBar(def, worldPos);
+        CreateRequirementsLabel(def, worldPos);
 
+        foreach (var cost in def.materialCost)
+        {
+            _materialsRequired += cost.amount;
+            _requiredByType[cost.type]  = cost.amount;
+            _deliveredByType[cost.type] = 0;
+        }
+
+        UpdateRequirementsLabel();
         SpawnMaterialFetchTasks(def);
 
         GameEvents.RaiseBuildingPlaced(def, worldPos);
@@ -48,13 +76,14 @@ public class BuildSite : MonoBehaviour
                 Vector3 srcPos = BuildingManager.Instance.StorehousePosition;
                 GameObject matObj = ResourceVisuals.Spawn(cost.type, srcPos);
 
+                var resourceType = cost.type; // capture for closure
                 var deliverTask = new VillagerTask
                 {
-                    Type                = TaskType.DeliverResource,
-                    TargetPosition      = transform.position,
-                    TargetObject        = gameObject,
+                    Type                 = TaskType.DeliverResource,
+                    TargetPosition       = transform.position,
+                    TargetObject         = gameObject,
                     DepositAtDestination = true,
-                    OnComplete          = OnMaterialDelivered
+                    OnComplete           = () => OnMaterialDelivered(resourceType)
                 };
 
                 var pickupTask = new VillagerTask
@@ -70,10 +99,45 @@ public class BuildSite : MonoBehaviour
         }
     }
 
-    void OnMaterialDelivered()
+    void OnMaterialDelivered(ResourceType type)
     {
         _materialsDelivered++;
-        if (_materialsDelivered >= _materialsRequired)
+        if (_deliveredByType.ContainsKey(type))
+            _deliveredByType[type]++;
+        UpdateRequirementsLabel();
+        CheckCompletion();
+    }
+
+    /// <summary>
+    /// Called by ConstructionQueue each Evening with available Hammers.
+    /// Returns the number of Hammers not consumed (overflow for next project).
+    /// </summary>
+    public int ApplyHammers(int amount)
+    {
+        int needed    = HammerCost - HammersApplied;
+        int consumed  = Mathf.Min(amount, needed);
+        HammersApplied += consumed;
+        UpdateProgressBar();
+        UpdateRequirementsLabel();
+        CheckCompletion();
+        return amount - consumed;
+    }
+
+    /// <summary>
+    /// Spend one hammer from the player's bank and apply it here.
+    /// Returns true if a hammer was available and applied.
+    /// </summary>
+    public bool TryApplyOneHammer()
+    {
+        if (IsComplete) return false;
+        if (!HammerManager.Instance.TrySpend(1)) return false;
+        ApplyHammers(1);
+        return true;
+    }
+
+    void CheckCompletion()
+    {
+        if (_materialsDelivered >= _materialsRequired && HammersApplied >= HammerCost)
             Complete();
     }
 
@@ -96,20 +160,22 @@ public class BuildSite : MonoBehaviour
         _pile.Add(mat);
     }
 
-    /// <summary>No-op — kept for API compatibility.</summary>
-    public void AddProgress(float delta) { }
-
     void Complete()
     {
         IsComplete = true;
 
-        if (_scaffoldVisual != null)  Destroy(_scaffoldVisual);
-        if (_completedVisual != null) _completedVisual.SetActive(true);
+        // Remove click collider — building is done
+        if (TryGetComponent<BoxCollider>(out var col)) Destroy(col);
+
+        if (_scaffoldVisual != null)                        Destroy(_scaffoldVisual);
+        if (_hammerProgressBar != null)                     Destroy(_hammerProgressBar);
+        if (_requirementsLabel != null)                     Destroy(_requirementsLabel.gameObject);
+        if (_completedVisual != null)                       _completedVisual.SetActive(true);
 
         foreach (var mat in _pile) if (mat != null) Destroy(mat);
         _pile.Clear();
 
-        BuildingManager.Instance.RegisterBuilding(Definition, transform.position);
+        BuildingManager.Instance.RegisterBuilding(Definition, transform.position, _completedVisual);
         GridManager.Instance?.RebakeNavMesh();
 
         if (Definition.associatedCard != null)
@@ -119,6 +185,85 @@ public class BuildSite : MonoBehaviour
         GameEvents.RaiseBuildingCompleted(Definition);
 
         enabled = false;
+    }
+
+    // ── Requirements label ────────────────────────────────────────────────────────
+
+    void CreateRequirementsLabel(BuildingDefinition def, Vector3 worldPos)
+    {
+        var go = new GameObject("RequirementsLabel");
+        go.transform.position = worldPos + new Vector3(0f, 3.6f, 0f);
+        // Billboard: face camera each frame
+        go.AddComponent<BillboardLabel>();
+
+        _requirementsLabel = go.AddComponent<TextMeshPro>();
+        _requirementsLabel.fontSize        = 2.2f;
+        _requirementsLabel.alignment       = TextAlignmentOptions.Center;
+        _requirementsLabel.color           = Color.white;
+        _requirementsLabel.outlineWidth    = 0.2f;
+        _requirementsLabel.outlineColor    = Color.black;
+    }
+
+    void UpdateRequirementsLabel()
+    {
+        if (_requirementsLabel == null) return;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"<b>{Definition.buildingName}</b>");
+
+        foreach (var cost in Definition.materialCost)
+        {
+            int delivered = _deliveredByType.TryGetValue(cost.type, out int d) ? d : 0;
+            int needed    = cost.amount - delivered;
+            string color  = needed <= 0 ? "#88FF88" : "#FFFFFF";
+            sb.AppendLine($"<color={color}>{cost.type}: {delivered}/{cost.amount}</color>");
+        }
+
+        sb.Append($"<color=#FFD700>\u26d3 {HammersApplied}/{HammerCost}</color>");
+
+        _requirementsLabel.text = sb.ToString();
+    }
+
+    // ── Hammer progress bar ───────────────────────────────────────────────────────
+
+    void CreateHammerProgressBar(BuildingDefinition def, Vector3 worldPos)
+    {
+        float w = def.widthCells;
+        const float barHeight = 0.15f;
+        const float barDepth  = 0.15f;
+        const float yPos      = 2.3f;
+
+        _hammerProgressBar = new GameObject("HammerProgressBar");
+        _hammerProgressBar.transform.position = worldPos;
+
+        var track = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        track.name = "Track";
+        track.transform.SetParent(_hammerProgressBar.transform, false);
+        track.transform.localPosition = new Vector3(0, yPos, 0);
+        track.transform.localScale    = new Vector3(w, barHeight, barDepth);
+        track.GetComponent<Renderer>().material = ResourceVisuals.CreateUnlit(new Color(0.2f, 0.2f, 0.2f));
+        Object.Destroy(track.GetComponent<Collider>());
+
+        var fill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        fill.name = "Fill";
+        fill.transform.SetParent(_hammerProgressBar.transform, false);
+        fill.transform.localPosition = new Vector3(-w / 2f, yPos, 0);
+        fill.transform.localScale    = new Vector3(0f, barHeight * 1.05f, barDepth * 1.1f);
+        fill.GetComponent<Renderer>().material = ResourceVisuals.CreateUnlit(new Color(1f, 0.85f, 0.1f));
+        Object.Destroy(fill.GetComponent<Collider>());
+    }
+
+    void UpdateProgressBar()
+    {
+        if (_hammerProgressBar == null) return;
+        var fill = _hammerProgressBar.transform.Find("Fill");
+        if (fill == null) return;
+
+        float w    = Definition.widthCells;
+        float frac = HammerProgressFraction;
+        float fillW = w * frac;
+        fill.localScale    = new Vector3(fillW, fill.localScale.y, fill.localScale.z);
+        fill.localPosition = new Vector3(-w / 2f + fillW / 2f, fill.localPosition.y, fill.localPosition.z);
     }
 
     // ── Visual helpers ────────────────────────────────────────────────────────

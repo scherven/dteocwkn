@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
@@ -15,20 +16,25 @@ public class HandUI : MonoBehaviour
 
     readonly List<(CardData data, GameObject obj)> _cards = new();
 
+    GameObject _hoveredBuilding;
+    readonly Dictionary<Renderer, Color> _originalColors = new();
+
     RectTransform _rect;
 
     void Awake() => _rect = GetComponent<RectTransform>();
 
     void OnEnable()
     {
-        GameEvents.OnCardDrawn  += OnCardDrawn;
-        GameEvents.OnCardPlayed += OnCardPlayed;
+        GameEvents.OnCardDrawn     += OnCardDrawn;
+        GameEvents.OnCardPlayed    += OnCardPlayed;
+        GameEvents.OnHandDiscarded += OnHandDiscarded;
     }
 
     void OnDisable()
     {
-        GameEvents.OnCardDrawn  -= OnCardDrawn;
-        GameEvents.OnCardPlayed -= OnCardPlayed;
+        GameEvents.OnCardDrawn     -= OnCardDrawn;
+        GameEvents.OnCardPlayed    -= OnCardPlayed;
+        GameEvents.OnHandDiscarded -= OnHandDiscarded;
     }
 
     void OnCardDrawn(CardData card)
@@ -45,6 +51,14 @@ public class HandUI : MonoBehaviour
         Destroy(_cards[idx].obj);
         _cards.RemoveAt(idx);
         LayoutCards();
+    }
+
+    void OnHandDiscarded()
+    {
+        foreach (var (_, obj) in _cards)
+            Destroy(obj);
+        _cards.Clear();
+        OnCardHoverExit();
     }
 
     void LayoutCards()
@@ -77,6 +91,17 @@ public class HandUI : MonoBehaviour
         var captured = card;
         btn.onClick.AddListener(() => DeckManager.Instance?.PlayCard(captured));
 
+        // Hover → highlight associated building
+        var trigger = go.AddComponent<EventTrigger>();
+
+        var enterEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+        enterEntry.callback.AddListener(_ => OnCardHoverEnter(captured));
+        trigger.triggers.Add(enterEntry);
+
+        var exitEntry = new EventTrigger.Entry { eventID = EventTriggerType.PointerExit };
+        exitEntry.callback.AddListener(_ => OnCardHoverExit());
+        trigger.triggers.Add(exitEntry);
+
         // Label — omitted for resource cards (colour communicates type)
         if (card.type != CardType.Resource)
         {
@@ -98,25 +123,41 @@ public class HandUI : MonoBehaviour
         return go;
     }
 
-    static Color CardColor(CardData card)
+    void OnCardHoverEnter(CardData card)
     {
-        if (card.type == CardType.Resource && card.effect is AddResourceEffect eff)
-        {
-            return eff.resourceType switch
-            {
-                ResourceType.Wood  => new Color(0.55f, 0.35f, 0.15f), // warm brown
-                ResourceType.Stone => new Color(0.40f, 0.45f, 0.55f), // cool slate
-                _                  => new Color(0.25f, 0.55f, 0.25f)
-            };
-        }
+        OnCardHoverExit(); // clear any previous highlight
 
-        return card.type switch
+        var hint = card.effect?.GetBuildingHint();
+        if (hint == null) return;
+
+        var building = BuildingManager.Instance?.GetBuildingAt(hint.Value);
+        if (building == null) return;
+
+        _hoveredBuilding = building;
+        foreach (var r in building.GetComponentsInChildren<Renderer>())
         {
-            CardType.Resource => new Color(0.25f, 0.55f, 0.25f),
-            CardType.Building => new Color(0.45f, 0.35f, 0.20f),
-            CardType.Villager => new Color(0.25f, 0.35f, 0.65f),
-            CardType.Event    => new Color(0.65f, 0.25f, 0.25f),
+            _originalColors[r] = r.material.color;
+            r.material.color   = Color.Lerp(r.material.color, Color.yellow, 0.45f);
+        }
+    }
+
+    void OnCardHoverExit()
+    {
+        if (_hoveredBuilding == null) return;
+        foreach (var r in _hoveredBuilding.GetComponentsInChildren<Renderer>())
+            if (_originalColors.TryGetValue(r, out var c))
+                r.material.color = c;
+        _originalColors.Clear();
+        _hoveredBuilding = null;
+    }
+
+    static Color CardColor(CardData card) =>
+        card.type switch
+        {
+            CardType.Resource => new Color(0.25f, 0.55f, 0.25f), // green (forage)
+            CardType.Building => new Color(0.45f, 0.35f, 0.20f), // tan
+            CardType.Villager => new Color(0.25f, 0.35f, 0.65f), // blue
+            CardType.Event    => new Color(0.65f, 0.25f, 0.25f), // red
             _                 => Color.gray
         };
-    }
 }

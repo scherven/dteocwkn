@@ -12,6 +12,8 @@ public class PlacementMode : MonoBehaviour
     GameObject         _preview;
     bool               _active;
 
+    public bool IsActive => _active;
+
     static readonly Color ValidColor   = new(0.20f, 0.85f, 0.20f);
     static readonly Color InvalidColor = new(0.85f, 0.20f, 0.20f);
 
@@ -66,11 +68,11 @@ public class PlacementMode : MonoBehaviour
     {
         GridManager.Instance.OccupyCells(_pending, cell);
 
-        var siteGo   = new GameObject($"BuildSite_{_pending.buildingName}");
+        var siteGo    = new GameObject($"BuildSite_{_pending.buildingName}");
         var buildSite = siteGo.AddComponent<BuildSite>();
         buildSite.Initialize(_pending, worldPos);
+        ConstructionQueue.Instance.Enqueue(buildSite);
 
-        // Parent under scene Buildings container (optional — Bootstrap sets it up)
         var buildings = GameObject.Find("Buildings");
         if (buildings != null) siteGo.transform.SetParent(buildings.transform);
 

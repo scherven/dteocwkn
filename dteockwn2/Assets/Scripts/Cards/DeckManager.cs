@@ -6,19 +6,27 @@ public class DeckManager : MonoBehaviour
 {
     public static DeckManager Instance { get; private set; }
 
-    [SerializeField] float baseDrawInterval = 2f;
     [SerializeField] int baseMaxHandSize = 7;
 
-    public float DrawInterval => Mathf.Max(0.5f, baseDrawInterval);
-    public int MaxHandSize => baseMaxHandSize;
+    public int MaxHandSize  => baseMaxHandSize;
+    public int CurrentTurn  { get; private set; } = 0;
+    public TurnPhase CurrentPhase { get; private set; } = TurnPhase.Morning;
+
+    const int DrawsPerTurn = 5;
 
     public IReadOnlyList<CardData> Hand => _hand;
     public int DrawPileCount => _drawPile.Count;
-    public int DiscardCount => _discard.Count;
+    public int DiscardCount  => _discard.Count;
+
+    /// <summary>Returns true if the card is currently in the player's hand.</summary>
+    public bool IsCardInHand(CardData card) => _hand.Contains(card);
 
     readonly List<CardData> _drawPile = new();
-    readonly List<CardData> _hand = new();
-    readonly List<CardData> _discard = new();
+    readonly List<CardData> _hand     = new();
+    readonly List<CardData> _discard  = new();
+
+    // Villager spawns queued by Cottage cards — resolved each Morning.
+    readonly List<Vector3> _pendingVillagerSpawns = new();
 
     void Awake()
     {
@@ -26,18 +34,17 @@ public class DeckManager : MonoBehaviour
         Instance = this;
     }
 
-    void Start() => StartCoroutine(DrawLoop());
+    void Start() => StartCoroutine(BeginMorning());
 
-    IEnumerator DrawLoop()
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /// <summary>Called by the "End Day" button.</summary>
+    public void EndDay()
     {
-        while (true)
-        {
-            yield return new WaitForSeconds(DrawInterval);
-            DrawCard();
-        }
+        if (CurrentPhase != TurnPhase.Day) return;
+        StartCoroutine(RunEveningThroughMorning());
     }
 
-    // Set initial deck without firing OnCardAddedToDeck for each card.
     public void SetStartingDeck(List<CardData> cards)
     {
         _drawPile.Clear();
@@ -81,6 +88,7 @@ public class DeckManager : MonoBehaviour
 
     public void PlayCard(CardData card)
     {
+        if (CurrentPhase != TurnPhase.Day) return;
         if (!_hand.Remove(card)) return;
         _discard.Add(card);
 
@@ -88,17 +96,81 @@ public class DeckManager : MonoBehaviour
         {
             var ctx = new CardPlayContext
             {
-                inventory = GameInventory.Instance,
+                inventory       = GameInventory.Instance,
                 buildingManager = BuildingManager.Instance,
-                taskDispatcher = TaskDispatcher.Instance,
-                deckManager = this,
-                sourceCard = card
+                taskDispatcher  = TaskDispatcher.Instance,
+                deckManager     = this,
+                hammerManager   = HammerManager.Instance,
+                sourceCard      = card
             };
             card.effect.Resolve(ctx);
         }
 
         GameEvents.RaiseCardPlayed(card);
     }
+
+    /// <summary>Queue a villager to spawn at the given position next Morning.</summary>
+    public void QueueVillagerSpawn(Vector3 position) =>
+        _pendingVillagerSpawns.Add(position);
+
+    // ── Phase coroutine ───────────────────────────────────────────────────────
+
+    IEnumerator BeginMorning()
+    {
+        SetPhase(TurnPhase.Morning);
+        CurrentTurn++;
+        SpawnQueuedVillagers();
+
+        for (int i = 0; i < DrawsPerTurn; i++)
+            DrawCard();
+
+        yield return null; // let the frame render with the new hand
+
+        SetPhase(TurnPhase.Day);
+    }
+
+    IEnumerator RunEveningThroughMorning()
+    {
+        // Evening — distribute all banked hammers: buildings first, then planned roads.
+        SetPhase(TurnPhase.Evening);
+        int hammers   = HammerManager.Instance.ConsumeAll();
+        int leftover  = ConstructionQueue.Instance.ApplyHammers(hammers);
+        RoadManager.Instance?.ApplyHammers(leftover);
+
+        yield return new WaitForSeconds(0.3f);
+
+        // Night — discard hand
+        SetPhase(TurnPhase.Night);
+        DiscardHand();
+
+        yield return new WaitForSeconds(0.3f);
+
+        // Morning of next day
+        yield return StartCoroutine(BeginMorning());
+    }
+
+    void DiscardHand()
+    {
+        foreach (var card in _hand)
+            _discard.Add(card);
+        _hand.Clear();
+        GameEvents.RaiseHandDiscarded();
+    }
+
+    void SpawnQueuedVillagers()
+    {
+        foreach (var pos in _pendingVillagerSpawns)
+            VillagerManager.Instance?.SpawnVillager(pos);
+        _pendingVillagerSpawns.Clear();
+    }
+
+    void SetPhase(TurnPhase phase)
+    {
+        CurrentPhase = phase;
+        GameEvents.RaiseTurnPhaseChanged(phase);
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
 
     static void Shuffle(List<CardData> list)
     {

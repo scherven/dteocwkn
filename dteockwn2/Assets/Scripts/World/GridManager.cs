@@ -8,9 +8,12 @@ public class GridManager : MonoBehaviour
 
     [SerializeField] int gridHalfSize = 50; // map is -50..50 on X and Z
 
-    readonly HashSet<Vector2Int> _occupied = new();
+    readonly HashSet<Vector2Int> _occupied      = new();
+    readonly HashSet<Vector2Int> _preparedCells = new();
 
     bool         _gridVisible;
+    bool         _preparePlotActive;
+    GameObject   _preparePreview;
     GameObject   _gridVisual;
     NavMeshData  _navMeshData;
     NavMeshDataInstance _navMeshHandle;
@@ -25,6 +28,7 @@ public class GridManager : MonoBehaviour
     void Update()
     {
         if (Input.GetKeyDown(KeyCode.G)) ToggleGrid();
+        if (_preparePlotActive) UpdatePreparePlotCursor();
     }
 
     public void Initialize(MeshFilter _ = null) => BakeNavMesh();
@@ -39,11 +43,90 @@ public class GridManager : MonoBehaviour
 
     public bool CanPlace(BuildingDefinition def, Vector2Int origin)
     {
+        bool needsTerrain = def.requiredTerrain != TerrainType.Field;
+
         for (int x = 0; x < def.widthCells; x++)
             for (int z = 0; z < def.depthCells; z++)
-                if (_occupied.Contains(origin + new Vector2Int(x, z)))
-                    return false;
+            {
+                var cell = origin + new Vector2Int(x, z);
+                if (_occupied.Contains(cell)) return false;
+
+                if (needsTerrain)
+                {
+                    // Terrain-restricted buildings bypass the Clear Land requirement
+                    // but ALL cells must match the required terrain type
+                    if (TerrainManager.Instance.GetTerrainType(cell) != def.requiredTerrain)
+                        return false;
+                }
+                else
+                {
+                    // Require prepared cells only once the player has used Clear Land at least once
+                    if (_preparedCells.Count > 0 && !_preparedCells.Contains(cell)) return false;
+                }
+            }
         return true;
+    }
+
+    // ── Prepared plots ────────────────────────────────────────────────────────
+
+    public bool HasAnyPreparedCells => _preparedCells.Count > 0;
+
+    /// <summary>Enters the interactive prepare-plot selection mode.</summary>
+    public void BeginPreparePlotSelection()
+    {
+        _preparePlotActive = true;
+        _preparePreview = CreatePreparePlotPreview();
+    }
+
+    void UpdatePreparePlotCursor()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            CancelPreparePlot();
+            return;
+        }
+
+        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+        if (!Physics.Raycast(ray, out RaycastHit hit, 1000f)) return;
+        if (hit.normal.y < 0.8f) return;
+
+        var origin   = WorldToGrid(hit.point);
+        var worldPos = GridToWorld(origin);
+        _preparePreview.transform.position = worldPos + new Vector3(0.5f, 0.01f, 0.5f);
+
+        if (Input.GetMouseButtonDown(0))
+            ConfirmPreparePlot(origin);
+    }
+
+    void ConfirmPreparePlot(Vector2Int origin)
+    {
+        for (int x = 0; x < 2; x++)
+            for (int z = 0; z < 2; z++)
+            {
+                var cell = origin + new Vector2Int(x, z);
+                TerrainManager.Instance?.ClearCell(cell);
+                _preparedCells.Add(cell);
+            }
+
+        PreparedPlotVisual.Create(GridToWorld(origin) + new Vector3(0.5f, 0.01f, 0.5f));
+        CancelPreparePlot();
+    }
+
+    void CancelPreparePlot()
+    {
+        _preparePlotActive = false;
+        if (_preparePreview != null) { Object.Destroy(_preparePreview); _preparePreview = null; }
+    }
+
+    static GameObject CreatePreparePlotPreview()
+    {
+        var go  = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        go.name = "PreparePlotPreview";
+        go.transform.rotation   = Quaternion.Euler(90, 0, 0);
+        go.transform.localScale = new Vector3(2f, 2f, 1f);
+        go.GetComponent<Renderer>().material = ResourceVisuals.CreateUnlit(new Color(0.3f, 0.9f, 0.3f, 0.5f));
+        Object.Destroy(go.GetComponent<Collider>());
+        return go;
     }
 
     public void OccupyCells(BuildingDefinition def, Vector2Int origin)
@@ -107,24 +190,45 @@ public class GridManager : MonoBehaviour
 
     void BakeNavMesh()
     {
-        // Use a flat box covering the entire map as the walkable source.
-        // NavMeshBuildSourceShape.Mesh's sourceData is only available via the
-        // AI Navigation package; Box works identically for a flat plane and
-        // needs no extra reference. Buildings carve via NavMeshObstacle.
-        var source = new NavMeshBuildSource
+        // Road area (3) cost: 1/1.75 ≈ 0.571 — agents prefer roads when routing
+        // because lower cost = faster in NavMesh A*. Must be set before building.
+        const int   RoadArea     = 3;
+        const float RoadCostMult = 1f / 1.75f;
+        NavMesh.SetAreaCost(RoadArea, RoadCostMult);
+
+        var sources = new List<NavMeshBuildSource>();
+
+        // Base walkable terrain — full map, thin slab at y = 0
+        sources.Add(new NavMeshBuildSource
         {
             transform = Matrix4x4.identity,
             shape     = NavMeshBuildSourceShape.Box,
-            size      = new Vector3(100f, 0.2f, 100f), // thin slab at y = 0
+            size      = new Vector3(100f, 0.2f, 100f),
             area      = 0 // Walkable
-        };
+        });
+
+        // Road cells — slightly taller (0.3 > 0.2) and added after terrain so they
+        // take priority in the build and produce a distinct area-3 NavMesh polygon.
+        if (RoadManager.Instance != null)
+        {
+            foreach (var cell in RoadManager.Instance.BuiltRoads)
+            {
+                sources.Add(new NavMeshBuildSource
+                {
+                    transform = Matrix4x4.Translate(new Vector3(cell.x, 0f, cell.y)),
+                    shape     = NavMeshBuildSourceShape.Box,
+                    size      = new Vector3(1f, 0.3f, 1f),
+                    area      = RoadArea
+                });
+            }
+        }
 
         var bounds   = new Bounds(Vector3.zero, new Vector3(110f, 10f, 110f));
         var settings = NavMesh.GetSettingsByID(0);
 
         _navMeshData   = NavMeshBuilder.BuildNavMeshData(
             settings,
-            new List<NavMeshBuildSource> { source },
+            sources,
             bounds,
             Vector3.zero,
             Quaternion.identity);

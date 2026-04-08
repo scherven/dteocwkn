@@ -12,19 +12,27 @@ public class DebugPanel : MonoBehaviour
     {
         if (_text == null) return;
 
-        var deck = DeckManager.Instance;
-        var inv  = GameInventory.Instance;
-        var vm   = VillagerManager.Instance;
+        var deck    = DeckManager.Instance;
+        var inv     = GameInventory.Instance;
+        var vm      = VillagerManager.Instance;
+        var hammers = HammerManager.Instance;
+        var queue   = ConstructionQueue.Instance;
 
         if (deck == null || inv == null) return;
 
+        var season = SeasonManager.Instance;
+
         _text.text =
+            $"Day:         {deck.CurrentTurn}  [{deck.CurrentPhase}]\n" +
+            $"Season:      {season?.DisplayString() ?? "—"}\n" +
+            $"Hammers:     {hammers?.HammersAvailable ?? 0}\n" +
+            $"Queue:       {queue?.QueueSummary() ?? "—"}\n" +
             $"Draw pile:   {deck.DrawPileCount}\n" +
             $"Hand:        {deck.Hand.Count} / {deck.MaxHandSize}\n" +
             $"Discard:     {deck.DiscardCount}\n" +
-            $"Draw every:  {deck.DrawInterval:F1}s\n" +
             $"Villagers:   {vm?.TotalVillagerCount ?? 0}\n" +
             $"Wood:        {inv.GetCount(ResourceType.Wood)}\n" +
-            $"Stone:       {inv.GetCount(ResourceType.Stone)}";
+            $"Stone:       {inv.GetCount(ResourceType.Stone)}\n" +
+            $"Food:        {inv.GetCount(ResourceType.Food)}";
     }
 }

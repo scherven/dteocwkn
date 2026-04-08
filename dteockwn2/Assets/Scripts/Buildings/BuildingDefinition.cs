@@ -10,14 +10,17 @@ public class BuildingDefinition : ScriptableObject
     public int depthCells = 2;
     public List<ResourceCost> materialCost = new();
 
-    [Tooltip("Total seconds for 1 villager working alone to complete construction.")]
-    public float constructionTimeBase = 20f;
+    [Tooltip("Total Hammers required to complete construction across one or more days.")]
+    public int hammerCost = 4;
 
     public BuildingType type;
     public int housingCapacity;  // Housing only
     public int jobSlots;         // Job only
 
     public GameObject greyboxPrefab; // optional; Bootstrap creates a box if null
+
+    [Tooltip("If not Field, ALL cells in this building's footprint must be that terrain type. Also bypasses the Clear Land preparation requirement.")]
+    public TerrainType requiredTerrain = TerrainType.Field;
 
     [Tooltip("Card injected into the deck when this building completes. May be null.")]
     public CardData associatedCard;

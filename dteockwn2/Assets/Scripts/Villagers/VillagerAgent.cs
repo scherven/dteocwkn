@@ -7,9 +7,11 @@ using UnityEngine.AI;
 [RequireComponent(typeof(VillagerAnimator))]
 public class VillagerAgent : MonoBehaviour
 {
-    const float ArriveDist   = 0.4f;
-    const float PickupPause  = 0.4f; // seconds to "pick up" a resource
-    const float CarryHeight  = 2.2f; // local Y offset above villager while carrying
+    const float ArriveDist        = 0.4f;
+    const float PickupPause       = 0.4f; // seconds to "pick up" a resource
+    const float CarryHeight       = 2.2f; // local Y offset above villager while carrying
+    const float BaseSpeed         = 3.5f;
+    const float RoadSpeedMult     = 1.75f;
 
     NavMeshAgent   _nav;
     VillagerAnimator _anim;
@@ -18,6 +20,17 @@ public class VillagerAgent : MonoBehaviour
 
     public bool IsIdle => _currentTask == null;
     public VillagerTask CurrentTask => _currentTask;
+
+    // ── Card ownership ─────────────────────────────────────────────────────────
+    /// <summary>This villager's personal CardData instance in the deck.</summary>
+    public CardData OwnedCard { get; set; }
+
+    /// <summary>True when a job change was requested while the card was in hand;
+    /// the mutation will be applied when the hand is discarded.</summary>
+    public bool HasPendingJobChange { get; set; }
+
+    /// <summary>The job to apply on next hand discard. Null means revert to plain Villager.</summary>
+    public BuildingDefinition PendingJobDef { get; set; }
 
     void Awake()
     {
@@ -32,6 +45,14 @@ public class VillagerAgent : MonoBehaviour
     }
 
     void OnDestroy() => VillagerManager.Instance?.UnregisterVillager(this);
+
+    void Update()
+    {
+        // Boost speed when walking on a built road cell
+        if (_nav == null || RoadManager.Instance == null || GridManager.Instance == null) return;
+        var cell = GridManager.Instance.WorldToGrid(transform.position);
+        _nav.speed = RoadManager.Instance.IsBuiltRoad(cell) ? BaseSpeed * RoadSpeedMult : BaseSpeed;
+    }
 
     public void AssignTask(VillagerTask task)
     {
@@ -122,19 +143,8 @@ public class VillagerAgent : MonoBehaviour
 
     IEnumerator DoBuild(VillagerTask task)
     {
+        // Construction progress is now driven by Hammers via ConstructionQueue.
+        // Villagers walk to the site as a visual; no per-frame progress calls needed.
         yield return WalkTo(task.TargetPosition);
-
-        var site = task.TargetObject != null
-            ? task.TargetObject.GetComponent<BuildSite>()
-            : null;
-
-        if (site == null) yield break;
-
-        while (site != null && !site.IsComplete)
-        {
-            site.AddProgress(Time.deltaTime / site.Definition.constructionTimeBase);
-            _anim.OnBuildTick();
-            yield return null;
-        }
     }
 }

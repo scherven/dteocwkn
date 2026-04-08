@@ -10,4 +10,10 @@ public abstract class CardEffect : ScriptableObject
     /// SpawnVillagerEffect) override to create a fresh instance with the position set.
     /// </summary>
     public virtual CardEffect BindToBuilding(Vector3 buildingPos) => this;
+
+    /// <summary>
+    /// Returns the world position of the building this effect is associated with, or null.
+    /// Used by HandUI to highlight the related building on card hover.
+    /// </summary>
+    public virtual Vector3? GetBuildingHint() => null;
 }

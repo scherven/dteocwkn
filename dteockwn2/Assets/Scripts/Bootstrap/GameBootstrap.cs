@@ -11,12 +11,11 @@ using UnityEngine.UI;
 public class GameBootstrap : MonoBehaviour
 {
     // --- Optional inspector overrides for starter assets ---
-    // If left null, assets are created in-memory for Play mode.
     [Header("Starter Assets (optional — auto-created if null)")]
     [SerializeField] BuildingDefinition woodcutterDef;
     [SerializeField] BuildingDefinition cottageDef;
-    [SerializeField] CardData woodCard;
-    [SerializeField] CardData stoneCard;
+    [SerializeField] BuildingDefinition stonecutterDef;
+    [SerializeField] BuildingDefinition farmDef;
 
     Material _whiteMat;
 
@@ -30,21 +29,25 @@ public class GameBootstrap : MonoBehaviour
     {
         SetupCamera();
 
-        // World must exist before NavMesh bake
         var terrain = CreateTerrain();
+        TerrainManager.Instance.Generate(Random.Range(0, 9999));
         CreateStorehouse();
-        CreateVillager(new Vector3(3f, 0f, 0f),  "Villager_01");
-        CreateVillager(new Vector3(-3f, 0f, 0f), "Villager_02");
 
-        // Bake NavMesh after terrain is created
+        // Spawn 5 starting villagers evenly distributed in a ring around the storehouse.
+        var initialVillagers = new System.Collections.Generic.List<VillagerAgent>();
+        for (int i = 0; i < 5; i++)
+        {
+            float angle = i * Mathf.PI * 2f / 5f;
+            var   pos   = new Vector3(Mathf.Cos(angle) * 4f, 0f, Mathf.Sin(angle) * 4f);
+            initialVillagers.Add(CreateVillager(pos, $"Villager_{i + 1:D2}"));
+        }
+
         GridManager.Instance.Initialize(terrain.GetComponent<MeshFilter>());
 
-        // Set up starting state
         SetupStartingInventory();
-        SetupStartingDeck();
+        SetupStartingDeck(initialVillagers);
         SetupMarket();
 
-        // UI last (needs DeckManager etc. to be ready)
         CreateUI();
     }
 
@@ -56,12 +59,19 @@ public class GameBootstrap : MonoBehaviour
 
         AddSingleton<GameEvents>(root);
         AddSingleton<GameInventory>(root);
+        AddSingleton<HammerManager>(root);
         AddSingleton<DeckManager>(root);
         AddSingleton<TaskDispatcher>(root);
         AddSingleton<BuildingManager>(root);
+        AddSingleton<ConstructionQueue>(root);
         AddSingleton<MarketManager>(root);
         AddSingleton<VillagerManager>(root);
         AddSingleton<GridManager>(root);
+        AddSingleton<TerrainManager>(root);
+        AddSingleton<SeasonManager>(root);
+        AddSingleton<RoadManager>(root);
+        AddSingleton<RoadTool>(root);
+        AddSingleton<HammerInputHandler>(root);
         AddSingleton<PlacementMode>(root);
     }
 
@@ -78,7 +88,6 @@ public class GameBootstrap : MonoBehaviour
     {
         var worldRoot = new GameObject("World");
 
-        // 100×100 plane (Unity Plane is 10 units; scale by 10 to get 100)
         var terrain = GameObject.CreatePrimitive(PrimitiveType.Plane);
         terrain.name = "Terrain";
         terrain.transform.SetParent(worldRoot.transform);
@@ -95,15 +104,12 @@ public class GameBootstrap : MonoBehaviour
     {
         var buildings = new GameObject("Buildings");
         StorehouseVisual.Create(Vector3.zero, buildings);
-        // Storehouse occupies the center cells (3×3 around origin)
         GridManager.Instance.OccupyCells(3, 3, new Vector2Int(-1, -1));
     }
 
     // ── Villagers ─────────────────────────────────────────────────────────────
 
-    int _villagerIndex;
-
-    GameObject CreateVillager(Vector3 pos, string villageName)
+    VillagerAgent CreateVillager(Vector3 pos, string villageName)
     {
         var villagers = GameObject.Find("Villagers") ?? new GameObject("Villagers");
 
@@ -111,28 +117,25 @@ public class GameBootstrap : MonoBehaviour
         go.name = villageName;
         go.transform.SetParent(villagers.transform);
         go.transform.position   = pos;
-        go.transform.localScale = new Vector3(1f, 0.9f, 1f); // radius 0.5, height ~1.8
+        go.transform.localScale = new Vector3(1f, 0.9f, 1f);
 
         go.GetComponent<Renderer>().material = _whiteMat;
 
-        var agent = go.AddComponent<NavMeshAgent>();
-        agent.radius          = 0.4f;
-        agent.height          = 1.8f;
-        agent.speed           = 3.5f;
-        agent.angularSpeed    = 120f;
-        agent.acceleration    = 8f;
-        agent.stoppingDistance = 0.3f;
+        var navAgent = go.AddComponent<NavMeshAgent>();
+        navAgent.radius           = 0.4f;
+        navAgent.height           = 1.8f;
+        navAgent.speed            = 3.5f;
+        navAgent.angularSpeed     = 120f;
+        navAgent.acceleration     = 8f;
+        navAgent.stoppingDistance = 0.3f;
 
-        go.AddComponent<VillagerAgent>();
         go.AddComponent<VillagerNeeds>();
         go.AddComponent<VillagerAnimator>();
-
-        return go;
+        return go.AddComponent<VillagerAgent>();
     }
 
     // ── Camera ────────────────────────────────────────────────────────────────
 
-    // Camera already exists in SampleScene; just add the controller.
     void SetupCamera()
     {
         var cam = Camera.main;
@@ -148,14 +151,49 @@ public class GameBootstrap : MonoBehaviour
         GameInventory.Instance.Add(ResourceType.Stone, 3);
     }
 
-    void SetupStartingDeck()
+    void SetupStartingDeck(System.Collections.Generic.List<VillagerAgent> initialVillagers)
     {
-        EnsureCardAssets();
+        var cards = new List<CardData>();
 
-        var startingCards = new List<CardData>();
-        for (int i = 0; i < 10; i++) startingCards.Add(woodCard);
-        for (int i = 0; i < 6;  i++) startingCards.Add(stoneCard);
-        DeckManager.Instance.SetStartingDeck(startingCards);
+        // One personal Villager card per starting villager.
+        // Each card is linked to its owner; VillagerManager will mutate it when a job is assigned.
+        var hammerEffect = ScriptableObject.CreateInstance<GiveHammerEffect>();
+        foreach (var agent in initialVillagers)
+        {
+            var c = ScriptableObject.CreateInstance<CardData>();
+            c.cardName    = "Villager";
+            c.description = "A villager puts in a day's work. +1 Hammer.";
+            c.type        = CardType.Villager;
+            c.effect      = hammerEffect;
+            agent.OwnedCard = c;
+            cards.Add(c);
+        }
+
+        // 3× Clear Land — prepare a 2×2 plot for building
+        var clearEffect = ScriptableObject.CreateInstance<ClearLandEffect>();
+        for (int i = 0; i < 3; i++)
+        {
+            var c = ScriptableObject.CreateInstance<CardData>();
+            c.cardName    = "Clear Land";
+            c.description = "Prepare a plot for construction.";
+            c.type        = CardType.Event;
+            c.effect      = clearEffect;
+            cards.Add(c);
+        }
+
+        // 2× Forage — player chooses Wood or Stone; villager fetches it
+        var forageEffect = ScriptableObject.CreateInstance<ForageEffect>();
+        for (int i = 0; i < 2; i++)
+        {
+            var c = ScriptableObject.CreateInstance<CardData>();
+            c.cardName    = "Forage";
+            c.description = "Gather from the wilderness. Choose: Wood or Stone.";
+            c.type        = CardType.Resource;
+            c.effect      = forageEffect;
+            cards.Add(c);
+        }
+
+        DeckManager.Instance.SetStartingDeck(cards);
     }
 
     void SetupMarket()
@@ -163,8 +201,10 @@ public class GameBootstrap : MonoBehaviour
         EnsureBuildingAssets();
 
         var market = MarketManager.Instance;
-        market.AddEntry(new MarketEntry { building = woodcutterDef, unlocked = true });
-        market.AddEntry(new MarketEntry { building = cottageDef,    unlocked = true });
+        market.AddEntry(new MarketEntry { building = woodcutterDef,  unlocked = true });
+        market.AddEntry(new MarketEntry { building = cottageDef,     unlocked = true });
+        market.AddEntry(new MarketEntry { building = stonecutterDef, unlocked = true });
+        market.AddEntry(new MarketEntry { building = farmDef,        unlocked = true });
     }
 
     // ── Asset creation (runtime fallback) ─────────────────────────────────────
@@ -174,69 +214,87 @@ public class GameBootstrap : MonoBehaviour
         if (woodcutterDef == null)
         {
             woodcutterDef = ScriptableObject.CreateInstance<BuildingDefinition>();
-            woodcutterDef.buildingName        = "Woodcutter's Hut";
-            woodcutterDef.description         = "Puts a villager to work felling timber.";
-            woodcutterDef.widthCells          = 2;
-            woodcutterDef.depthCells          = 2;
-            woodcutterDef.materialCost        = new List<ResourceCost>
+            woodcutterDef.buildingName  = "Woodcutter's Hut";
+            woodcutterDef.description   = "Puts a villager to work felling timber.";
+            woodcutterDef.widthCells    = 2;
+            woodcutterDef.depthCells    = 2;
+            woodcutterDef.materialCost  = new List<ResourceCost>
                 { new(ResourceType.Wood, 2), new(ResourceType.Stone, 1) };
-            woodcutterDef.constructionTimeBase = 20f;
-            woodcutterDef.type                = BuildingType.Job;
-            woodcutterDef.jobSlots            = 1;
-            woodcutterDef.associatedCard      = woodCard; // adds a Wood card to the deck on completion
+            woodcutterDef.hammerCost    = 4;
+            woodcutterDef.type         = BuildingType.Job;
+            woodcutterDef.jobSlots     = 1;
+
+            var hutEffect = ScriptableObject.CreateInstance<WoodcutterHutEffect>();
+            var hutCard              = ScriptableObject.CreateInstance<CardData>();
+            hutCard.cardName         = "Woodcutter's Hut";
+            hutCard.description      = "Produce 3 Logs into the Town Buffer.";
+            hutCard.type             = CardType.Building;
+            hutCard.effect           = hutEffect;
+            woodcutterDef.associatedCard = hutCard;
         }
 
         if (cottageDef == null)
         {
             cottageDef = ScriptableObject.CreateInstance<BuildingDefinition>();
-            cottageDef.buildingName        = "Cottage";
-            cottageDef.description         = "Housing for two villagers.";
-            cottageDef.widthCells          = 2;
-            cottageDef.depthCells          = 2;
-            cottageDef.materialCost        = new List<ResourceCost>
+            cottageDef.buildingName  = "Cottage";
+            cottageDef.description   = "Housing for two villagers.";
+            cottageDef.widthCells    = 2;
+            cottageDef.depthCells    = 2;
+            cottageDef.materialCost  = new List<ResourceCost>
                 { new(ResourceType.Wood, 3), new(ResourceType.Stone, 1) };
-            cottageDef.constructionTimeBase = 25f;
-            cottageDef.type                = BuildingType.Housing;
-            cottageDef.housingCapacity     = 2;
+            cottageDef.hammerCost    = 2;
+            cottageDef.type         = BuildingType.Housing;
+            cottageDef.housingCapacity = 2;
 
-            // Template card — BuildSite.Complete calls CreateBoundInstance which
-            // stamps the real cottage position into a fresh SpawnVillagerEffect copy.
-            var cottageEffect = ScriptableObject.CreateInstance<SpawnVillagerEffect>();
-            var cottageCard               = ScriptableObject.CreateInstance<CardData>();
-            cottageCard.cardName          = "Cottage";
-            cottageCard.description       = "Send two villagers home. A new villager is born.";
-            cottageCard.type              = CardType.Villager;
-            cottageCard.effect            = cottageEffect;
-            cottageDef.associatedCard     = cottageCard;
-        }
-    }
-
-    void EnsureCardAssets()
-    {
-        if (woodCard == null)
-        {
-            var effect = ScriptableObject.CreateInstance<AddResourceEffect>();
-            effect.resourceType = ResourceType.Wood;
-            effect.amount       = 1;
-
-            woodCard             = ScriptableObject.CreateInstance<CardData>();
-            woodCard.cardName    = "Wood";
-            woodCard.description = "A piece of timber. A villager carries it to the storehouse.";
-            woodCard.type        = CardType.Resource;
-            woodCard.effect      = effect;
+            var cottageEffect            = ScriptableObject.CreateInstance<CottageEffect>();
+            var cottageCard              = ScriptableObject.CreateInstance<CardData>();
+            cottageCard.cardName         = "Cottage";
+            cottageCard.description      = "Housing +2. Gain 1 villager next morning.";
+            cottageCard.type             = CardType.Building;
+            cottageCard.effect           = cottageEffect;
+            cottageDef.associatedCard    = cottageCard;
         }
 
-        if (stoneCard == null)
+        if (stonecutterDef == null)
         {
-            var effect = ScriptableObject.CreateInstance<AddResourceEffect>();
-            effect.resourceType = ResourceType.Stone;
-            effect.amount       = 1;
+            stonecutterDef = ScriptableObject.CreateInstance<BuildingDefinition>();
+            stonecutterDef.buildingName    = "Stonecutter";
+            stonecutterDef.description     = "Must be built on stone terrain. Cuts stone for the town.";
+            stonecutterDef.widthCells      = 2;
+            stonecutterDef.depthCells      = 2;
+            stonecutterDef.materialCost    = new List<ResourceCost> { new(ResourceType.Wood, 4) };
+            stonecutterDef.hammerCost      = 4;
+            stonecutterDef.type            = BuildingType.Job;
+            stonecutterDef.jobSlots        = 1;
+            stonecutterDef.requiredTerrain = TerrainType.Stone;
 
-            stoneCard             = ScriptableObject.CreateInstance<CardData>();
-            stoneCard.cardName    = "Stone";
-            stoneCard.description = "A block of stone. A villager carries it to the storehouse.";
-            stoneCard.type        = CardType.Resource;
-            stoneCard.effect      = effect;
+            var stonecutterEffect        = ScriptableObject.CreateInstance<StonecutterEffect>();
+            var stonecutterCard          = ScriptableObject.CreateInstance<CardData>();
+            stonecutterCard.cardName     = "Stonecutter";
+            stonecutterCard.description  = "Cut 3 Stone from the quarry.";
+            stonecutterCard.type         = CardType.Building;
+            stonecutterCard.effect       = stonecutterEffect;
+            stonecutterDef.associatedCard = stonecutterCard;
+        }
+
+        if (farmDef == null)
+        {
+            farmDef = ScriptableObject.CreateInstance<BuildingDefinition>();
+            farmDef.buildingName  = "Farm";
+            farmDef.description   = "Grows food in Summer. Play the Farm card to harvest.";
+            farmDef.widthCells    = 2;
+            farmDef.depthCells    = 2;
+            farmDef.materialCost  = new List<ResourceCost> { new(ResourceType.Wood, 2) };
+            farmDef.hammerCost    = 3;
+            farmDef.type          = BuildingType.Farm;
+
+            var farmEffect       = ScriptableObject.CreateInstance<FarmEffect>();
+            var farmCard         = ScriptableObject.CreateInstance<CardData>();
+            farmCard.cardName    = "Farm";
+            farmCard.description = "Harvest 3 Food. (Summer only)";
+            farmCard.type        = CardType.Building;
+            farmCard.effect      = farmEffect;
+            farmDef.associatedCard = farmCard;
         }
     }
 
@@ -244,7 +302,6 @@ public class GameBootstrap : MonoBehaviour
 
     void CreateUI()
     {
-        // Ensure EventSystem exists
         if (Object.FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
         {
             var es = new GameObject("EventSystem");
@@ -254,7 +311,7 @@ public class GameBootstrap : MonoBehaviour
 
         var canvasGo = new GameObject("UI");
         var canvas   = canvasGo.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 10;
 
         var scaler = canvasGo.AddComponent<CanvasScaler>();
@@ -266,16 +323,19 @@ public class GameBootstrap : MonoBehaviour
         CreateInventoryHUD(canvasGo);
         CreateDebugPanel(canvasGo);
         CreateTaskDebugPanel(canvasGo);
+        CreateJobAssignmentPanel();
         CreateHandUI(canvasGo);
         CreateMarketUI(canvasGo);
+        CreateEndDayButton(canvasGo);
+        CreateRoadToolButton(canvasGo);
     }
 
     void CreateInventoryHUD(GameObject canvas)
     {
         var go = MakePanel("InventoryHUD", canvas,
-            new Vector2(1f, 1f), new Vector2(1f, 1f),   // anchor top-right
-            new Vector2(-10f, -10f), new Vector2(-160f, -10f),
-            new Vector2(150f, 80f));
+            new Vector2(1f, 1f), new Vector2(1f, 1f),
+            new Vector2(-10f, -10f), new Vector2(-180f, -10f),
+            new Vector2(170f, 130f));
         go.AddComponent<Image>().color = new Color(0, 0, 0, 0.5f);
         MakeText(go, "");
         go.AddComponent<InventoryHUD>();
@@ -285,21 +345,20 @@ public class GameBootstrap : MonoBehaviour
     void CreateDebugPanel(GameObject canvas)
     {
         var go = MakePanel("DebugPanel", canvas,
-            new Vector2(0f, 1f), new Vector2(0f, 1f),   // anchor top-left
+            new Vector2(0f, 1f), new Vector2(0f, 1f),
             new Vector2(10f, -10f), new Vector2(10f, -10f),
-            new Vector2(210f, 160f));
+            new Vector2(240f, 200f));
         go.AddComponent<Image>().color = new Color(0, 0, 0, 0.5f);
         MakeText(go, "");
         go.AddComponent<DebugPanel>();
         go.AddComponent<DraggablePanel>();
     }
 
-    // Task debug panel — anchored top-left below the main debug panel; toggle with T.
     void CreateTaskDebugPanel(GameObject canvas)
     {
         var go = MakePanel("TaskDebugPanel", canvas,
             new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(10f, -180f), new Vector2(10f, -180f),
+            new Vector2(10f, -220f), new Vector2(10f, -220f),
             new Vector2(320f, 300f));
         go.AddComponent<Image>().color = new Color(0, 0, 0, 0.55f);
         MakeText(go, "");
@@ -310,10 +369,68 @@ public class GameBootstrap : MonoBehaviour
     void CreateHandUI(GameObject canvas)
     {
         var go = MakePanel("HandUI", canvas,
-            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), // anchor bottom-center
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
             new Vector2(0f, 10f), new Vector2(0f, 10f),
             new Vector2(900f, 160f));
         go.AddComponent<HandUI>();
+    }
+
+    void CreateEndDayButton(GameObject canvas)
+    {
+        var go = MakePanel("EndDayButton", canvas,
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+            new Vector2(0f, 180f), new Vector2(0f, 180f),
+            new Vector2(160f, 50f));
+
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.2f, 0.6f, 0.2f, 0.9f);
+
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+        var colors = btn.colors;
+        colors.highlightedColor = new Color(0.3f, 0.8f, 0.3f, 0.9f);
+        colors.pressedColor     = new Color(0.1f, 0.4f, 0.1f, 0.9f);
+        btn.colors = colors;
+
+        var label = MakeText(go, "End Day");
+        label.fontSize  = 18f;
+        label.alignment = TMPro.TextAlignmentOptions.Center;
+
+        btn.onClick.AddListener(() => DeckManager.Instance?.EndDay());
+    }
+
+    /// <summary>
+    /// Creates the IMGUI Job Assignment debug panel (not attached to the Canvas —
+    /// JobAssignmentPanel draws itself with OnGUI and only needs a MonoBehaviour host).
+    /// </summary>
+    void CreateJobAssignmentPanel()
+    {
+        var go = new GameObject("JobAssignmentPanel");
+        go.AddComponent<JobAssignmentPanel>();
+    }
+
+    void CreateRoadToolButton(GameObject canvas)
+    {
+        // Positioned to the right of the End Day button, same vertical level
+        var go = MakePanel("RoadToolButton", canvas,
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+            new Vector2(190f, 180f), new Vector2(190f, 180f),
+            new Vector2(130f, 50f));
+
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.25f, 0.25f, 0.25f, 0.90f);
+
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+
+        var label = MakeText(go, "Road (R)");
+        label.fontSize  = 16f;
+        label.alignment = TMPro.TextAlignmentOptions.Center;
+
+        btn.onClick.AddListener(() => RoadTool.Instance?.Toggle());
+
+        // Wire button image into RoadTool so it highlights when the mode is active
+        RoadTool.Instance?.SetButtonRef(img);
     }
 
     void CreateMarketUI(GameObject canvas)
@@ -322,14 +439,12 @@ public class GameBootstrap : MonoBehaviour
         go.transform.SetParent(canvas.transform, false);
         go.AddComponent<MarketUI>();
 
-        // Panel (hidden by default)
         var panel = MakePanel("Panel", go,
             new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
             Vector2.zero, Vector2.zero,
             new Vector2(500f, 400f));
         panel.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f, 0.95f);
 
-        // Scroll list
         var list = new GameObject("List", typeof(RectTransform));
         list.transform.SetParent(panel.transform, false);
         var listRt = list.GetComponent<RectTransform>();
@@ -339,8 +454,8 @@ public class GameBootstrap : MonoBehaviour
         listRt.offsetMax = new Vector2(-10, -10);
 
         var vlg = list.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing = 8;
-        vlg.childControlHeight  = false;
+        vlg.spacing              = 8;
+        vlg.childControlHeight   = false;
         vlg.childForceExpandHeight = false;
     }
 
@@ -354,10 +469,10 @@ public class GameBootstrap : MonoBehaviour
         var go = new GameObject(name, typeof(RectTransform));
         go.transform.SetParent(parent.transform, false);
         var rt = go.GetComponent<RectTransform>();
-        rt.anchorMin       = anchorMin;
-        rt.anchorMax       = anchorMax;
+        rt.anchorMin        = anchorMin;
+        rt.anchorMax        = anchorMax;
         rt.anchoredPosition = anchoredPos;
-        rt.sizeDelta       = sizeDelta;
+        rt.sizeDelta        = sizeDelta;
         return go;
     }
 
@@ -372,9 +487,9 @@ public class GameBootstrap : MonoBehaviour
         rt.offsetMax = new Vector2(-6, -6);
 
         var tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text      = text;
-        tmp.fontSize  = 14f;
-        tmp.color     = Color.white;
+        tmp.text     = text;
+        tmp.fontSize = 14f;
+        tmp.color    = Color.white;
         return tmp;
     }
 
