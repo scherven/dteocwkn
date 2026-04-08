@@ -20,6 +20,7 @@ public class VillagerManager : MonoBehaviour
     GiveHammerEffect   _hammerEffect;
     GiveHammerEffect   _doubleHammerEffect;
     GiveResourceEffect _woodJobEffect;
+    FarmEffect         _farmEffect;
 
     public int TotalVillagerCount => _villagers.Count;
     public IReadOnlyList<VillagerAgent> AllVillagers => _villagers;
@@ -41,6 +42,8 @@ public class VillagerManager : MonoBehaviour
         _woodJobEffect              = ScriptableObject.CreateInstance<GiveResourceEffect>();
         _woodJobEffect.resourceType = ResourceType.Wood;
         _woodJobEffect.amount       = 1;
+
+        _farmEffect = ScriptableObject.CreateInstance<FarmEffect>();
     }
 
     void OnEnable()
@@ -79,8 +82,8 @@ public class VillagerManager : MonoBehaviour
 
             if (v.OwnedCard == null) continue;
             bool inHand = DeckManager.Instance?.IsCardInHand(v.OwnedCard) ?? false;
-            if (inHand) { v.HasPendingJobChange = true; v.PendingJobDef = def; }
-            else ApplyJobToCard(v.OwnedCard, def);
+            if (inHand) { v.HasPendingJobChange = true; v.PendingJobDef = def; v.PendingJobPos = pos; }
+            else ApplyJobToCard(v.OwnedCard, def, pos);
         }
 
         // Remove the old Builder's Hut from BuildingManager once Guildhall replaces it.
@@ -164,7 +167,7 @@ public class VillagerManager : MonoBehaviour
         // Card and colour reflect the current fallback workplace.
         var card   = ScriptableObject.CreateInstance<CardData>();
         card.type  = CardType.Villager;
-        ApplyJobToCard(card, _fallbackDef);
+        ApplyJobToCard(card, _fallbackDef, _fallbackPos);
         villager.OwnedCard = card;
         ApplyJobColor(villager, _fallbackDef);
 
@@ -189,8 +192,8 @@ public class VillagerManager : MonoBehaviour
         if (v.OwnedCard != null)
         {
             bool inHand = DeckManager.Instance?.IsCardInHand(v.OwnedCard) ?? false;
-            if (inHand) { v.HasPendingJobChange = true; v.PendingJobDef = def; }
-            else ApplyJobToCard(v.OwnedCard, def);
+            if (inHand) { v.HasPendingJobChange = true; v.PendingJobDef = def; v.PendingJobPos = buildingPos; }
+            else ApplyJobToCard(v.OwnedCard, def, buildingPos);
         }
 
         // If the villager is idle and assigned to a specific building, walk them there now.
@@ -217,10 +220,11 @@ public class VillagerManager : MonoBehaviour
         {
             v.HasPendingJobChange = true;
             v.PendingJobDef       = _fallbackDef;
+            v.PendingJobPos       = _fallbackPos;
         }
         else
         {
-            ApplyJobToCard(v.OwnedCard, _fallbackDef);
+            ApplyJobToCard(v.OwnedCard, _fallbackDef, _fallbackPos);
         }
     }
 
@@ -262,7 +266,7 @@ public class VillagerManager : MonoBehaviour
         foreach (var v in _villagers)
         {
             if (!v.HasPendingJobChange) continue;
-            ApplyJobToCard(v.OwnedCard, v.PendingJobDef);
+            ApplyJobToCard(v.OwnedCard, v.PendingJobDef, v.PendingJobPos);
             ApplyJobColor(v, v.PendingJobDef);
             v.HasPendingJobChange = false;
             v.PendingJobDef       = null;
@@ -299,7 +303,7 @@ public class VillagerManager : MonoBehaviour
     /// Guildhall → +2 Hammers.
     /// Other jobs → building-specific card (+1 Wood).
     /// </summary>
-    void ApplyJobToCard(CardData card, BuildingDefinition jobDef)
+    void ApplyJobToCard(CardData card, BuildingDefinition jobDef, Vector3 buildingPos)
     {
         if (jobDef == null || jobDef.type == BuildingType.BuildersHut)
         {
@@ -312,6 +316,12 @@ public class VillagerManager : MonoBehaviour
             card.cardName    = "Guildhall Worker";
             card.description = "Works at the Guildhall. +2 Hammers.";
             card.effect      = _doubleHammerEffect;
+        }
+        else if (jobDef.type == BuildingType.Farm)
+        {
+            card.cardName    = "Plant One Seed";
+            card.description = "Plant a seed at the farm. In Autumn, harvest 5 Food instead.";
+            card.effect      = _farmEffect.BindToBuilding(buildingPos);
         }
         else
         {

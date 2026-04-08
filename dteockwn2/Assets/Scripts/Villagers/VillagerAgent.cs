@@ -33,6 +33,9 @@ public class VillagerAgent : MonoBehaviour
     /// <summary>The job to apply on next hand discard. Null means revert to plain Villager.</summary>
     public BuildingDefinition PendingJobDef { get; set; }
 
+    /// <summary>Building position paired with PendingJobDef, needed for position-bound effects.</summary>
+    public Vector3 PendingJobPos { get; set; }
+
     void Awake()
     {
         _nav      = GetComponent<NavMeshAgent>();

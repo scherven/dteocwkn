@@ -20,7 +20,7 @@ public class GameBootstrap : MonoBehaviour
     [SerializeField] BuildingDefinition guildhallDef;
     [SerializeField] BuildingDefinition builderHutDef;
 
-    Material _whiteMat;
+    Material   _whiteMat;
 
     void Awake()
     {
@@ -308,6 +308,7 @@ public class GameBootstrap : MonoBehaviour
             farmDef.materialCost  = new List<ResourceCost> { new(ResourceType.Wood, 2) };
             farmDef.hammerCost    = 3;
             farmDef.type          = BuildingType.Farm;
+            farmDef.jobSlots      = 2;
 
             var farmEffect       = ScriptableObject.CreateInstance<FarmEffect>();
             var farmCard         = ScriptableObject.CreateInstance<CardData>();
@@ -386,12 +387,13 @@ public class GameBootstrap : MonoBehaviour
         CreateInventoryHUD(canvasGo);
         CreateDebugPanel(canvasGo);
         CreateTaskDebugPanel(canvasGo);
-        CreateJobAssignmentPanel(canvasGo);
+        CreateJobAssignmentPanel();
         CreateHandUI(canvasGo);
         CreateMarketUI(canvasGo);
         CreateEndDayButton(canvasGo);
         CreateRoadToolButton(canvasGo);
         CreateClearLandButton(canvasGo);
+
     }
 
     void CreateInventoryHUD(GameObject canvas)
@@ -463,78 +465,14 @@ public class GameBootstrap : MonoBehaviour
         btn.onClick.AddListener(() => DeckManager.Instance?.EndDay());
     }
 
-    void CreateJobAssignmentPanel(GameObject canvas)
+    /// <summary>
+    /// Creates the IMGUI Job Assignment debug panel (not attached to the Canvas —
+    /// JobAssignmentPanel draws itself with OnGUI and only needs a MonoBehaviour host).
+    /// </summary>
+    void CreateJobAssignmentPanel()
     {
-        // Outer panel — positioned below TaskDebugPanel on the left
-        var go = MakePanel("JobAssignmentPanel", canvas,
-            new Vector2(0f, 1f), new Vector2(0f, 1f),
-            new Vector2(10f, -530f), new Vector2(10f, -530f),
-            new Vector2(330f, 400f));
-        go.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
-        go.AddComponent<DraggablePanel>();
-
-        // Title bar
-        var title = new GameObject("Title", typeof(RectTransform));
-        title.transform.SetParent(go.transform, false);
-        var titleRt = title.GetComponent<RectTransform>();
-        titleRt.anchorMin       = new Vector2(0f, 1f);
-        titleRt.anchorMax       = new Vector2(1f, 1f);
-        titleRt.pivot           = new Vector2(0.5f, 1f);
-        titleRt.anchoredPosition = new Vector2(0f, 0f);
-        titleRt.sizeDelta       = new Vector2(0f, 24f);
-        var titleTmp = title.AddComponent<TMPro.TextMeshProUGUI>();
-        titleTmp.text      = "<b>Job Assignments</b>";
-        titleTmp.fontSize  = 13f;
-        titleTmp.alignment = TMPro.TextAlignmentOptions.Center;
-
-        // ScrollRect
-        var scrollGo = new GameObject("ScrollRect", typeof(RectTransform));
-        scrollGo.transform.SetParent(go.transform, false);
-        var scrollRt = scrollGo.GetComponent<RectTransform>();
-        scrollRt.anchorMin        = Vector2.zero;
-        scrollRt.anchorMax        = Vector2.one;
-        scrollRt.offsetMin        = new Vector2(4f, 4f);
-        scrollRt.offsetMax        = new Vector2(-4f, -26f);
-
-        var scrollRect = scrollGo.AddComponent<ScrollRect>();
-        scrollRect.horizontal = false;
-
-        // Viewport
-        var viewportGo = new GameObject("Viewport", typeof(RectTransform));
-        viewportGo.transform.SetParent(scrollGo.transform, false);
-        var viewportRt = viewportGo.GetComponent<RectTransform>();
-        viewportRt.anchorMin = Vector2.zero;
-        viewportRt.anchorMax = Vector2.one;
-        viewportRt.offsetMin = viewportRt.offsetMax = Vector2.zero;
-        viewportGo.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0f);
-        viewportGo.AddComponent<Mask>().showMaskGraphic = false;
-        scrollRect.viewport = viewportRt;
-
-        // Content
-        var contentGo = new GameObject("Content", typeof(RectTransform));
-        contentGo.transform.SetParent(viewportGo.transform, false);
-        var contentRt = contentGo.GetComponent<RectTransform>();
-        contentRt.anchorMin = new Vector2(0f, 1f);
-        contentRt.anchorMax = new Vector2(1f, 1f);
-        contentRt.pivot     = new Vector2(0.5f, 1f);
-        contentRt.anchoredPosition = Vector2.zero;
-        contentRt.sizeDelta = new Vector2(0f, 0f);
-
-        var vlg = contentGo.AddComponent<VerticalLayoutGroup>();
-        vlg.spacing              = 2;
-        vlg.padding              = new RectOffset(4, 4, 4, 4);
-        vlg.childControlHeight   = true;
-        vlg.childControlWidth    = true;
-        vlg.childForceExpandHeight = false;
-        vlg.childForceExpandWidth  = true;
-
-        var csf = contentGo.AddComponent<ContentSizeFitter>();
-        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-        scrollRect.content = contentRt;
-
-        var panel = go.AddComponent<JobAssignmentPanel>();
-        panel.Init(contentGo.transform);
+        var go = new GameObject("JobAssignmentPanel");
+        go.AddComponent<JobAssignmentPanel>();
     }
 
     void CreateRoadToolButton(GameObject canvas)
@@ -622,6 +560,7 @@ public class GameBootstrap : MonoBehaviour
         var rt = go.GetComponent<RectTransform>();
         rt.anchorMin        = anchorMin;
         rt.anchorMax        = anchorMax;
+        rt.pivot            = anchorMin;
         rt.anchoredPosition = anchoredPos;
         rt.sizeDelta        = sizeDelta;
         return go;
