@@ -17,6 +17,7 @@ public class GameBootstrap : MonoBehaviour
     [SerializeField] BuildingDefinition stonecutterDef;
     [SerializeField] BuildingDefinition farmDef;
     [SerializeField] BuildingDefinition granaryDef;
+    [SerializeField] BuildingDefinition guildhallDef;
 
     Material _whiteMat;
 
@@ -74,6 +75,7 @@ public class GameBootstrap : MonoBehaviour
         AddSingleton<FoodConsumptionManager>(root);
         AddSingleton<RoadManager>(root);
         AddSingleton<RoadTool>(root);
+        AddSingleton<ClearLandTool>(root);
         AddSingleton<HammerInputHandler>(root);
         AddSingleton<PlacementMode>(root);
     }
@@ -184,30 +186,6 @@ public class GameBootstrap : MonoBehaviour
             cards.Add(c);
         }
 
-        // 3× Clear Land — prepare a 2×2 plot for building
-        var clearEffect = ScriptableObject.CreateInstance<ClearLandEffect>();
-        for (int i = 0; i < 3; i++)
-        {
-            var c = ScriptableObject.CreateInstance<CardData>();
-            c.cardName    = "Clear Land";
-            c.description = "Prepare a plot for construction.";
-            c.type        = CardType.Event;
-            c.effect      = clearEffect;
-            cards.Add(c);
-        }
-
-        // 2× Forage — player chooses Wood or Stone; villager fetches it
-        var forageEffect = ScriptableObject.CreateInstance<ForageEffect>();
-        for (int i = 0; i < 2; i++)
-        {
-            var c = ScriptableObject.CreateInstance<CardData>();
-            c.cardName    = "Forage";
-            c.description = "Gather from the wilderness. Choose: Wood or Stone.";
-            c.type        = CardType.Resource;
-            c.effect      = forageEffect;
-            cards.Add(c);
-        }
-
         DeckManager.Instance.SetStartingDeck(cards);
     }
 
@@ -221,6 +199,7 @@ public class GameBootstrap : MonoBehaviour
         market.AddEntry(new MarketEntry { building = stonecutterDef, unlocked = true });
         market.AddEntry(new MarketEntry { building = farmDef,        unlocked = true });
         market.AddEntry(new MarketEntry { building = granaryDef,    unlocked = true });
+        market.AddEntry(new MarketEntry { building = guildhallDef,  unlocked = true });
     }
 
     // ── Asset creation (runtime fallback) ─────────────────────────────────────
@@ -326,6 +305,21 @@ public class GameBootstrap : MonoBehaviour
             granaryDef.type         = BuildingType.Granary;
             // No associated card — granary is passive storage.
         }
+
+        if (guildhallDef == null)
+        {
+            guildhallDef = ScriptableObject.CreateInstance<BuildingDefinition>();
+            guildhallDef.buildingName = "Guildhall";
+            guildhallDef.description  = "Assigns villagers here to produce 2 Hammers each.";
+            guildhallDef.widthCells   = 3;
+            guildhallDef.depthCells   = 3;
+            guildhallDef.materialCost = new List<ResourceCost>
+                { new(ResourceType.Wood, 10), new(ResourceType.Stone, 10) };
+            guildhallDef.hammerCost   = 10;
+            guildhallDef.type         = BuildingType.Guildhall;
+            guildhallDef.jobSlots     = 3;
+            // No associated card — job effects come through villager card mutation.
+        }
     }
 
     // ── UI ────────────────────────────────────────────────────────────────────
@@ -358,6 +352,7 @@ public class GameBootstrap : MonoBehaviour
         CreateMarketUI(canvasGo);
         CreateEndDayButton(canvasGo);
         CreateRoadToolButton(canvasGo);
+        CreateClearLandButton(canvasGo);
     }
 
     void CreateInventoryHUD(GameObject canvas)
@@ -461,6 +456,29 @@ public class GameBootstrap : MonoBehaviour
 
         // Wire button image into RoadTool so it highlights when the mode is active
         RoadTool.Instance?.SetButtonRef(img);
+    }
+
+    void CreateClearLandButton(GameObject canvas)
+    {
+        // Positioned to the right of the Road button
+        var go = MakePanel("ClearLandButton", canvas,
+            new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+            new Vector2(350f, 180f), new Vector2(350f, 180f),
+            new Vector2(130f, 50f));
+
+        var img = go.AddComponent<Image>();
+        img.color = new Color(0.25f, 0.25f, 0.25f, 0.90f);
+
+        var btn = go.AddComponent<Button>();
+        btn.targetGraphic = img;
+
+        var label = MakeText(go, "Clear (C)");
+        label.fontSize  = 16f;
+        label.alignment = TMPro.TextAlignmentOptions.Center;
+
+        btn.onClick.AddListener(() => ClearLandTool.Instance?.Toggle());
+
+        ClearLandTool.Instance?.SetButtonRef(img);
     }
 
     void CreateMarketUI(GameObject canvas)

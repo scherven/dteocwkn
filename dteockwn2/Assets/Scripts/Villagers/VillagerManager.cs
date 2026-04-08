@@ -12,6 +12,7 @@ public class VillagerManager : MonoBehaviour
 
     // Shared stateless effects — created once in Awake, reused by all villager cards.
     GiveHammerEffect   _hammerEffect;
+    GiveHammerEffect   _doubleHammerEffect;
     GiveResourceEffect _woodJobEffect;
 
     public int TotalVillagerCount => _villagers.Count;
@@ -25,7 +26,11 @@ public class VillagerManager : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
-        _hammerEffect = ScriptableObject.CreateInstance<GiveHammerEffect>();
+        _hammerEffect        = ScriptableObject.CreateInstance<GiveHammerEffect>();
+        _hammerEffect.amount = 1;
+
+        _doubleHammerEffect        = ScriptableObject.CreateInstance<GiveHammerEffect>();
+        _doubleHammerEffect.amount = 2;
 
         _woodJobEffect              = ScriptableObject.CreateInstance<GiveResourceEffect>();
         _woodJobEffect.resourceType = ResourceType.Wood;
@@ -195,6 +200,12 @@ public class VillagerManager : MonoBehaviour
             card.cardName    = "Villager";
             card.description = "A villager puts in a day's work. +1 Hammer.";
             card.effect      = _hammerEffect;
+        }
+        else if (jobDef.type == BuildingType.Guildhall)
+        {
+            card.cardName    = "Guildhall";
+            card.description = "Works at the Guildhall. +2 Hammers.";
+            card.effect      = _doubleHammerEffect;
         }
         else
         {

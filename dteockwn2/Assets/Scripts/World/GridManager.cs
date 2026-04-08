@@ -99,10 +99,11 @@ public class GridManager : MonoBehaviour
         _preparePreview.transform.position = worldPos + new Vector3(0.5f, 0.01f, 0.5f);
 
         if (Input.GetMouseButtonDown(0))
-            ConfirmPreparePlot(origin);
+            PreparePlot(origin);
     }
 
-    void ConfirmPreparePlot(Vector2Int origin)
+    /// <summary>Prepares a 2×2 plot for building placement. Called by ClearLandTool after spending a hammer.</summary>
+    public void PreparePlot(Vector2Int origin)
     {
         for (int x = 0; x < 2; x++)
             for (int z = 0; z < 2; z++)

@@ -11,8 +11,9 @@ public class HammerInputHandler : MonoBehaviour
     void Update()
     {
         if (!Input.GetMouseButtonDown(0)) return;
-        if (PlacementMode.Instance != null && PlacementMode.Instance.IsActive) return;
-        if (RoadTool.Instance      != null && RoadTool.Instance.IsActive)      return;
+        if (PlacementMode.Instance  != null && PlacementMode.Instance.IsActive)  return;
+        if (RoadTool.Instance       != null && RoadTool.Instance.IsActive)       return;
+        if (ClearLandTool.Instance  != null && ClearLandTool.Instance.IsActive)  return;
 
         Ray ray  = Camera.main.ScreenPointToRay(Input.mousePosition);
         var hits = Physics.RaycastAll(ray, 1000f, ~0, QueryTriggerInteraction.Collide);
