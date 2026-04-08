@@ -45,7 +45,7 @@ public class BuildingManager : MonoBehaviour
     {
         _buildings.Add((def, pos, go));
         TotalHousingCapacity += def.housingCapacity;
-        TotalJobSlots        += def.jobSlots;
+        if (def.jobSlots > 0) TotalJobSlots += def.jobSlots; // skip unlimited (-1)
         if (def.type == BuildingType.Granary)
             SetGranaryPosition(pos);
     }
@@ -80,4 +80,21 @@ public class BuildingManager : MonoBehaviour
     }
 
     public IReadOnlyList<(BuildingDefinition def, Vector3 pos, GameObject go)> AllBuildings => _buildings;
+
+    /// <summary>Removes a building entry by definition and position. Also destroys its GameObject.</summary>
+    public void RemoveBuilding(BuildingDefinition def, Vector3 pos)
+    {
+        for (int i = _buildings.Count - 1; i >= 0; i--)
+        {
+            var b = _buildings[i];
+            if (b.def == def && Vector3.Distance(b.pos, pos) < 0.5f)
+            {
+                TotalHousingCapacity -= def.housingCapacity;
+                if (def.jobSlots > 0) TotalJobSlots -= def.jobSlots; // skip unlimited (-1)
+                if (b.go != null) Destroy(b.go);
+                _buildings.RemoveAt(i);
+                return;
+            }
+        }
+    }
 }

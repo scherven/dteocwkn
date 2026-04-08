@@ -102,19 +102,55 @@ public class GridManager : MonoBehaviour
             PreparePlot(origin);
     }
 
-    /// <summary>Prepares a 2×2 plot for building placement. Called by ClearLandTool after spending a hammer.</summary>
+    /// <summary>Prepares a 2×2 plot for building placement. Called by ClearLandTool after spending a hammer.
+    /// Yields 1 Wood per Tree cell and 1 Stone per Stone cell cleared.</summary>
     public void PreparePlot(Vector2Int origin)
     {
         for (int x = 0; x < 2; x++)
             for (int z = 0; z < 2; z++)
             {
-                var cell = origin + new Vector2Int(x, z);
+                var cell    = origin + new Vector2Int(x, z);
+                var terrain = TerrainManager.Instance?.GetTerrainType(cell) ?? TerrainType.Field;
+
                 TerrainManager.Instance?.ClearCell(cell);
                 _preparedCells.Add(cell);
+
+                if (terrain == TerrainType.Tree)
+                    SpawnClearedResource(cell, ResourceType.Wood);
+                else if (terrain == TerrainType.Stone)
+                    SpawnClearedResource(cell, ResourceType.Stone);
             }
 
         PreparedPlotVisual.Create(GridToWorld(origin) + new Vector3(0.5f, 0.01f, 0.5f));
         CancelPreparePlot();
+    }
+
+    /// <summary>
+    /// Spawns a resource visual on a cleared cell and queues a villager pickup task for it.
+    /// </summary>
+    void SpawnClearedResource(Vector2Int cell, ResourceType type)
+    {
+        var spawnPos = GridToWorld(cell) + new Vector3(0.5f, 0f, 0.5f);
+        var res      = ResourceVisuals.Spawn(type, spawnPos);
+        var captured = type;
+
+        var deliver = new VillagerTask
+        {
+            Type           = TaskType.DeliverResource,
+            TargetPosition = BuildingManager.Instance.StorehousePosition,
+            TargetObject   = res,
+            OnComplete     = () => GameInventory.Instance?.Add(captured, 1)
+        };
+
+        var pickup = new VillagerTask
+        {
+            Type           = TaskType.PickUpResource,
+            TargetPosition = spawnPos,
+            TargetObject   = res,
+            FollowUp       = deliver
+        };
+
+        TaskDispatcher.Instance?.EnqueueTask(pickup);
     }
 
     void CancelPreparePlot()

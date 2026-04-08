@@ -5,22 +5,19 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Market panel — toggle with M key.
+/// Market panel — always visible, draggable.
 /// Shows all unlocked buildings with cost and a Buy button.
 /// </summary>
 public class MarketUI : MonoBehaviour
 {
-    GameObject _panel;
-    Transform  _listRoot;
-    bool       _open;
+    Transform _listRoot;
 
     readonly List<GameObject> _rows = new();
 
     void Start()
     {
-        _panel    = transform.Find("Panel")?.gameObject;
-        _listRoot = _panel?.transform.Find("List");
-        if (_panel != null) _panel.SetActive(false);
+        _listRoot = transform.Find("List");
+        Rebuild();
     }
 
     void OnEnable()
@@ -37,21 +34,9 @@ public class MarketUI : MonoBehaviour
         GameEvents.OnBuildingUnlocked -= OnBuildingUnlocked;
     }
 
-    void OnBuildingUnlocked(BuildingDefinition _) { if (_open) Rebuild(); }
+    void OnBuildingUnlocked(BuildingDefinition _) { Rebuild(); }
 
-    void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.M)) Toggle();
-    }
-
-    public void Toggle()
-    {
-        _open = !_open;
-        if (_panel != null) _panel.SetActive(_open);
-        if (_open) Rebuild();
-    }
-
-    void OnInventoryChange(ResourceType _, int __) { if (_open) Rebuild(); }
+    void OnInventoryChange(ResourceType _, int __) { Rebuild(); }
 
     void Rebuild()
     {
@@ -94,11 +79,7 @@ public class MarketUI : MonoBehaviour
         btnGo.AddComponent<Image>().color = new Color(0.2f, 0.6f, 0.2f);
         var btn      = btnGo.AddComponent<Button>();
         var captured = def;
-        btn.onClick.AddListener(() =>
-        {
-            if (MarketManager.Instance.TryPurchase(captured))
-                Toggle(); // close market on successful purchase
-        });
+        btn.onClick.AddListener(() => MarketManager.Instance.TryPurchase(captured));
 
         var btnLabel = new GameObject("Label", typeof(RectTransform));
         btnLabel.transform.SetParent(btnGo.transform, false);

@@ -18,6 +18,7 @@ public class GameBootstrap : MonoBehaviour
     [SerializeField] BuildingDefinition farmDef;
     [SerializeField] BuildingDefinition granaryDef;
     [SerializeField] BuildingDefinition guildhallDef;
+    [SerializeField] BuildingDefinition builderHutDef;
 
     Material _whiteMat;
 
@@ -35,6 +36,8 @@ public class GameBootstrap : MonoBehaviour
         TerrainManager.Instance.Generate(Random.Range(0, 9999));
         CreateStorehouse();
         CreateGranary();
+        EnsureBuildingAssets(); // needed before CreateBuildersHut
+        CreateBuildersHut();
 
         // Spawn 5 starting villagers evenly distributed in a ring around the storehouse.
         var initialVillagers = new System.Collections.Generic.List<VillagerAgent>();
@@ -121,6 +124,29 @@ public class GameBootstrap : MonoBehaviour
         BuildingManager.Instance.SetGranaryPosition(pos);
         GridManager.Instance.OccupyCells(3, 3, new Vector2Int(2, -1));
         GridManager.Instance.RegisterBuildingFootprint(pos, 3, 3);
+    }
+
+    void CreateBuildersHut()
+    {
+        var buildings = GameObject.Find("Buildings") ?? new GameObject("Buildings");
+        var pos       = new Vector3(-5f, 0f, 0f);
+
+        // Simple visual: a brownish box representing the hut.
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        go.name = "Builder's Hut";
+        go.transform.SetParent(buildings.transform);
+        go.transform.position   = pos + new Vector3(0f, 0.75f, 0f);
+        go.transform.localScale = new Vector3(1.8f, 1.5f, 1.8f);
+        go.GetComponent<Renderer>().material =
+            ResourceVisuals.CreateUnlit(ResourceVisuals.HexColor("8B7355"));
+        if (go.TryGetComponent<Collider>(out var col)) Destroy(col);
+
+        BuildingManager.Instance.RegisterBuilding(builderHutDef, pos, go);
+        GridManager.Instance.OccupyCells(2, 2, new Vector2Int(-6, -1));
+        GridManager.Instance.RegisterBuildingFootprint(pos, 2, 2);
+
+        // All unassigned villagers automatically work here.
+        VillagerManager.Instance.SetFallbackWorkplace(builderHutDef, pos);
     }
 
     // ── Villagers ─────────────────────────────────────────────────────────────
@@ -310,15 +336,28 @@ public class GameBootstrap : MonoBehaviour
         {
             guildhallDef = ScriptableObject.CreateInstance<BuildingDefinition>();
             guildhallDef.buildingName = "Guildhall";
-            guildhallDef.description  = "Assigns villagers here to produce 2 Hammers each.";
+            guildhallDef.description  = "Replaces the Builder's Hut. All unoccupied villagers produce 2 Hammers each.";
             guildhallDef.widthCells   = 3;
             guildhallDef.depthCells   = 3;
             guildhallDef.materialCost = new List<ResourceCost>
                 { new(ResourceType.Wood, 10), new(ResourceType.Stone, 10) };
             guildhallDef.hammerCost   = 10;
             guildhallDef.type         = BuildingType.Guildhall;
-            guildhallDef.jobSlots     = 3;
+            guildhallDef.jobSlots     = -1; // unlimited
             // No associated card — job effects come through villager card mutation.
+        }
+
+        if (builderHutDef == null)
+        {
+            builderHutDef = ScriptableObject.CreateInstance<BuildingDefinition>();
+            builderHutDef.buildingName = "Builder's Hut";
+            builderHutDef.description  = "Any villager not assigned elsewhere helps with construction. +1 Hammer each.";
+            builderHutDef.widthCells   = 2;
+            builderHutDef.depthCells   = 2;
+            builderHutDef.materialCost = new List<ResourceCost>();
+            builderHutDef.hammerCost   = 0;
+            builderHutDef.type         = BuildingType.BuildersHut;
+            builderHutDef.jobSlots     = -1; // unlimited
         }
     }
 
@@ -347,7 +386,7 @@ public class GameBootstrap : MonoBehaviour
         CreateInventoryHUD(canvasGo);
         CreateDebugPanel(canvasGo);
         CreateTaskDebugPanel(canvasGo);
-        CreateJobAssignmentPanel();
+        CreateJobAssignmentPanel(canvasGo);
         CreateHandUI(canvasGo);
         CreateMarketUI(canvasGo);
         CreateEndDayButton(canvasGo);
@@ -424,14 +463,78 @@ public class GameBootstrap : MonoBehaviour
         btn.onClick.AddListener(() => DeckManager.Instance?.EndDay());
     }
 
-    /// <summary>
-    /// Creates the IMGUI Job Assignment debug panel (not attached to the Canvas —
-    /// JobAssignmentPanel draws itself with OnGUI and only needs a MonoBehaviour host).
-    /// </summary>
-    void CreateJobAssignmentPanel()
+    void CreateJobAssignmentPanel(GameObject canvas)
     {
-        var go = new GameObject("JobAssignmentPanel");
-        go.AddComponent<JobAssignmentPanel>();
+        // Outer panel — positioned below TaskDebugPanel on the left
+        var go = MakePanel("JobAssignmentPanel", canvas,
+            new Vector2(0f, 1f), new Vector2(0f, 1f),
+            new Vector2(10f, -530f), new Vector2(10f, -530f),
+            new Vector2(330f, 400f));
+        go.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0.55f);
+        go.AddComponent<DraggablePanel>();
+
+        // Title bar
+        var title = new GameObject("Title", typeof(RectTransform));
+        title.transform.SetParent(go.transform, false);
+        var titleRt = title.GetComponent<RectTransform>();
+        titleRt.anchorMin       = new Vector2(0f, 1f);
+        titleRt.anchorMax       = new Vector2(1f, 1f);
+        titleRt.pivot           = new Vector2(0.5f, 1f);
+        titleRt.anchoredPosition = new Vector2(0f, 0f);
+        titleRt.sizeDelta       = new Vector2(0f, 24f);
+        var titleTmp = title.AddComponent<TMPro.TextMeshProUGUI>();
+        titleTmp.text      = "<b>Job Assignments</b>";
+        titleTmp.fontSize  = 13f;
+        titleTmp.alignment = TMPro.TextAlignmentOptions.Center;
+
+        // ScrollRect
+        var scrollGo = new GameObject("ScrollRect", typeof(RectTransform));
+        scrollGo.transform.SetParent(go.transform, false);
+        var scrollRt = scrollGo.GetComponent<RectTransform>();
+        scrollRt.anchorMin        = Vector2.zero;
+        scrollRt.anchorMax        = Vector2.one;
+        scrollRt.offsetMin        = new Vector2(4f, 4f);
+        scrollRt.offsetMax        = new Vector2(-4f, -26f);
+
+        var scrollRect = scrollGo.AddComponent<ScrollRect>();
+        scrollRect.horizontal = false;
+
+        // Viewport
+        var viewportGo = new GameObject("Viewport", typeof(RectTransform));
+        viewportGo.transform.SetParent(scrollGo.transform, false);
+        var viewportRt = viewportGo.GetComponent<RectTransform>();
+        viewportRt.anchorMin = Vector2.zero;
+        viewportRt.anchorMax = Vector2.one;
+        viewportRt.offsetMin = viewportRt.offsetMax = Vector2.zero;
+        viewportGo.AddComponent<Image>().color = new Color(0f, 0f, 0f, 0f);
+        viewportGo.AddComponent<Mask>().showMaskGraphic = false;
+        scrollRect.viewport = viewportRt;
+
+        // Content
+        var contentGo = new GameObject("Content", typeof(RectTransform));
+        contentGo.transform.SetParent(viewportGo.transform, false);
+        var contentRt = contentGo.GetComponent<RectTransform>();
+        contentRt.anchorMin = new Vector2(0f, 1f);
+        contentRt.anchorMax = new Vector2(1f, 1f);
+        contentRt.pivot     = new Vector2(0.5f, 1f);
+        contentRt.anchoredPosition = Vector2.zero;
+        contentRt.sizeDelta = new Vector2(0f, 0f);
+
+        var vlg = contentGo.AddComponent<VerticalLayoutGroup>();
+        vlg.spacing              = 2;
+        vlg.padding              = new RectOffset(4, 4, 4, 4);
+        vlg.childControlHeight   = true;
+        vlg.childControlWidth    = true;
+        vlg.childForceExpandHeight = false;
+        vlg.childForceExpandWidth  = true;
+
+        var csf = contentGo.AddComponent<ContentSizeFitter>();
+        csf.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        scrollRect.content = contentRt;
+
+        var panel = go.AddComponent<JobAssignmentPanel>();
+        panel.Init(contentGo.transform);
     }
 
     void CreateRoadToolButton(GameObject canvas)
@@ -483,15 +586,13 @@ public class GameBootstrap : MonoBehaviour
 
     void CreateMarketUI(GameObject canvas)
     {
-        var go = new GameObject("MarketUI");
-        go.transform.SetParent(canvas.transform, false);
-        go.AddComponent<MarketUI>();
-
-        var panel = MakePanel("Panel", go,
-            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
-            Vector2.zero, Vector2.zero,
+        // Panel anchored to top-right, below InventoryHUD
+        var panel = MakePanel("MarketUI", canvas,
+            new Vector2(1f, 1f), new Vector2(1f, 1f),
+            new Vector2(-260f, -150f), new Vector2(-260f, -150f),
             new Vector2(500f, 400f));
         panel.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f, 0.95f);
+        panel.AddComponent<DraggablePanel>();
 
         var list = new GameObject("List", typeof(RectTransform));
         list.transform.SetParent(panel.transform, false);
@@ -505,6 +606,8 @@ public class GameBootstrap : MonoBehaviour
         vlg.spacing              = 8;
         vlg.childControlHeight   = false;
         vlg.childForceExpandHeight = false;
+
+        panel.AddComponent<MarketUI>();
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────

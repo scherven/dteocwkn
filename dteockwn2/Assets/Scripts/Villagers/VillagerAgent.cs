@@ -13,10 +13,11 @@ public class VillagerAgent : MonoBehaviour
     const float BaseSpeed         = 3.5f;
     const float RoadSpeedMult     = 1.75f;
 
-    NavMeshAgent   _nav;
+    NavMeshAgent     _nav;
     VillagerAnimator _anim;
-    VillagerTask   _currentTask;
-    GameObject     _carried;
+    Renderer         _renderer;
+    VillagerTask     _currentTask;
+    GameObject       _carried;
 
     public bool IsIdle => _currentTask == null;
     public VillagerTask CurrentTask => _currentTask;
@@ -34,8 +35,16 @@ public class VillagerAgent : MonoBehaviour
 
     void Awake()
     {
-        _nav  = GetComponent<NavMeshAgent>();
-        _anim = GetComponent<VillagerAnimator>();
+        _nav      = GetComponent<NavMeshAgent>();
+        _anim     = GetComponent<VillagerAnimator>();
+        _renderer = GetComponent<Renderer>();
+    }
+
+    /// <summary>Sets the villager capsule's body colour to reflect their current job.</summary>
+    public void SetBodyColor(Color color)
+    {
+        if (_renderer == null) return;
+        _renderer.material = ResourceVisuals.CreateUnlit(color);
     }
 
     void Start()
@@ -83,12 +92,37 @@ public class VillagerAgent : MonoBehaviour
         _currentTask = null;
 
         if (task.FollowUp != null)
+        {
             AssignTask(task.FollowUp);
+        }
         else
         {
             _anim.OnIdle();
             TaskDispatcher.Instance.OnTaskCompleted(this);
+            // If the dispatcher had nothing for us, return to our assigned post.
+            if (IsIdle) WalkToJobIfAssigned();
         }
+    }
+
+    /// <summary>
+    /// If assigned to a specific building (not the fallback catch-all),
+    /// and not already standing there, walk to it.
+    /// </summary>
+    void WalkToJobIfAssigned()
+    {
+        var vm = VillagerManager.Instance;
+        if (vm == null) return;
+
+        var jobDef = vm.GetJobDef(this);
+        if (jobDef == null
+            || jobDef.type == BuildingType.BuildersHut
+            || jobDef.type == BuildingType.Guildhall)
+            return;
+
+        var dest = vm.GetJobPosition(this);
+        if (Vector3.Distance(transform.position, dest) < 2f) return;
+
+        AssignTask(new VillagerTask { Type = TaskType.WalkTo, TargetPosition = dest });
     }
 
     IEnumerator WalkTo(Vector3 pos)

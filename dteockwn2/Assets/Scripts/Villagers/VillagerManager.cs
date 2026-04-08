@@ -7,8 +7,14 @@ public class VillagerManager : MonoBehaviour
 
     readonly List<VillagerAgent> _villagers = new();
 
-    // Per-villager job: def + building world position to identify the specific instance.
+    // Per-villager explicit job assignment: def + building world position.
+    // Villagers NOT in this dict implicitly work at the fallback workplace.
     readonly Dictionary<VillagerAgent, (BuildingDefinition def, Vector3 pos)> _jobs = new();
+
+    // The "catch-all" workplace (Builder's Hut initially, replaced by Guildhall).
+    // Any villager not explicitly assigned elsewhere is implicitly assigned here.
+    BuildingDefinition _fallbackDef;
+    Vector3            _fallbackPos;
 
     // Shared stateless effects — created once in Awake, reused by all villager cards.
     GiveHammerEffect   _hammerEffect;
@@ -37,8 +43,66 @@ public class VillagerManager : MonoBehaviour
         _woodJobEffect.amount       = 1;
     }
 
-    void OnEnable()  => GameEvents.OnHandDiscarded += OnHandDiscarded;
-    void OnDisable() => GameEvents.OnHandDiscarded -= OnHandDiscarded;
+    void OnEnable()
+    {
+        GameEvents.OnHandDiscarded      += OnHandDiscarded;
+        GameEvents.OnBuildingCompleted  += OnBuildingCompleted;
+    }
+
+    void OnDisable()
+    {
+        GameEvents.OnHandDiscarded      -= OnHandDiscarded;
+        GameEvents.OnBuildingCompleted  -= OnBuildingCompleted;
+    }
+
+    // ── Fallback workplace ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sets the catch-all workplace for all unassigned villagers.
+    /// Mutates cards for every villager not currently in an explicit job.
+    /// If the old fallback was a Builder's Hut, removes it from BuildingManager.
+    /// </summary>
+    public void SetFallbackWorkplace(BuildingDefinition def, Vector3 pos)
+    {
+        var oldDef = _fallbackDef;
+        var oldPos = _fallbackPos;
+
+        _fallbackDef = def;
+        _fallbackPos = pos;
+
+        // Update colour and mutate cards for all implicit workers (those not explicitly assigned).
+        foreach (var v in _villagers)
+        {
+            if (_jobs.ContainsKey(v)) continue;
+
+            ApplyJobColor(v, def);
+
+            if (v.OwnedCard == null) continue;
+            bool inHand = DeckManager.Instance?.IsCardInHand(v.OwnedCard) ?? false;
+            if (inHand) { v.HasPendingJobChange = true; v.PendingJobDef = def; }
+            else ApplyJobToCard(v.OwnedCard, def);
+        }
+
+        // Remove the old Builder's Hut from BuildingManager once Guildhall replaces it.
+        if (oldDef != null && oldDef.type == BuildingType.BuildersHut)
+            BuildingManager.Instance?.RemoveBuilding(oldDef, oldPos);
+    }
+
+    // When a Guildhall completes construction, it becomes the new fallback workplace.
+    void OnBuildingCompleted(BuildingDefinition def)
+    {
+        if (def.type != BuildingType.Guildhall) return;
+
+        // Find the completed Guildhall's position from BuildingManager.
+        foreach (var (d, p, _) in BuildingManager.Instance.AllBuildings)
+        {
+            if (d == def)
+            {
+                SetFallbackWorkplace(def, p);
+                return;
+            }
+        }
+    }
 
     // ── Villager registration ─────────────────────────────────────────────────
 
@@ -70,6 +134,7 @@ public class VillagerManager : MonoBehaviour
     /// <summary>
     /// Creates a new villager capsule on the NavMesh at the given position,
     /// and injects a personal Villager card into the deck.
+    /// New villagers automatically work at the current fallback workplace.
     /// </summary>
     public VillagerAgent SpawnVillager(Vector3 pos)
     {
@@ -96,13 +161,12 @@ public class VillagerManager : MonoBehaviour
         go.AddComponent<VillagerAnimator>();
         var villager = go.AddComponent<VillagerAgent>(); // Start() registers with us
 
-        // Give this villager a personal card and add it to the active deck.
-        var card         = ScriptableObject.CreateInstance<CardData>();
-        card.cardName    = "Villager";
-        card.description = "A villager puts in a day's work. +1 Hammer.";
-        card.type        = CardType.Villager;
-        card.effect      = _hammerEffect;
+        // Card and colour reflect the current fallback workplace.
+        var card   = ScriptableObject.CreateInstance<CardData>();
+        card.type  = CardType.Villager;
+        ApplyJobToCard(card, _fallbackDef);
         villager.OwnedCard = card;
+        ApplyJobColor(villager, _fallbackDef);
 
         DeckManager.Instance?.AddCardToDeck(card);
 
@@ -120,82 +184,124 @@ public class VillagerManager : MonoBehaviour
     {
         _jobs[v] = (def, buildingPos);
 
-        if (v.OwnedCard == null) return;
+        ApplyJobColor(v, def);
 
-        bool inHand = DeckManager.Instance?.IsCardInHand(v.OwnedCard) ?? false;
-        if (inHand)
+        if (v.OwnedCard != null)
         {
-            v.HasPendingJobChange = true;
-            v.PendingJobDef       = def;
+            bool inHand = DeckManager.Instance?.IsCardInHand(v.OwnedCard) ?? false;
+            if (inHand) { v.HasPendingJobChange = true; v.PendingJobDef = def; }
+            else ApplyJobToCard(v.OwnedCard, def);
         }
-        else
-        {
-            ApplyJobToCard(v.OwnedCard, def);
-        }
+
+        // If the villager is idle and assigned to a specific building, walk them there now.
+        if (v.IsIdle && def.type != BuildingType.BuildersHut && def.type != BuildingType.Guildhall)
+            TaskDispatcher.Instance?.AssignTask(
+                new VillagerTask { Type = TaskType.WalkTo, TargetPosition = buildingPos }, v);
     }
 
     /// <summary>
-    /// Removes a villager's job assignment.
-    /// Reverts their card to plain Villager, deferred if the card is in hand.
+    /// Removes a villager's explicit job assignment.
+    /// They automatically return to the fallback workplace (Builder's Hut or Guildhall).
     /// </summary>
     public void UnassignJob(VillagerAgent v)
     {
         _jobs.Remove(v);
 
+        ApplyJobColor(v, _fallbackDef);
+
         if (v.OwnedCard == null) return;
 
+        // Revert to the fallback workplace card, not a plain unassigned Villager.
         bool inHand = DeckManager.Instance?.IsCardInHand(v.OwnedCard) ?? false;
         if (inHand)
         {
             v.HasPendingJobChange = true;
-            v.PendingJobDef       = null; // null → revert to Villager
+            v.PendingJobDef       = _fallbackDef;
         }
         else
         {
-            ApplyJobToCard(v.OwnedCard, null);
+            ApplyJobToCard(v.OwnedCard, _fallbackDef);
         }
     }
 
-    /// <summary>Returns the building definition this villager is assigned to, or null.</summary>
+    /// <summary>
+    /// Returns the building this villager works at.
+    /// For villagers without an explicit assignment, returns the fallback workplace.
+    /// </summary>
     public BuildingDefinition GetJobDef(VillagerAgent v) =>
-        _jobs.TryGetValue(v, out var j) ? j.def : null;
+        _jobs.TryGetValue(v, out var j) ? j.def : _fallbackDef;
 
-    /// <summary>Returns all villagers currently assigned to the given building instance.</summary>
+    /// <summary>Returns the world position of the building this villager is explicitly assigned to.</summary>
+    public Vector3 GetJobPosition(VillagerAgent v) =>
+        _jobs.TryGetValue(v, out var j) ? j.pos : _fallbackPos;
+
+    /// <summary>
+    /// Returns all villagers currently at the given building instance.
+    /// For the fallback workplace, also includes all villagers without explicit assignments.
+    /// </summary>
     public List<VillagerAgent> GetOccupantsFor(BuildingDefinition def, Vector3 pos)
     {
         var result = new List<VillagerAgent>();
         foreach (var kvp in _jobs)
             if (kvp.Value.def == def && Vector3.Distance(kvp.Value.pos, pos) < 0.5f)
                 result.Add(kvp.Key);
+
+        // Implicit workers at the fallback building.
+        if (_fallbackDef == def && Vector3.Distance(_fallbackPos, pos) < 0.5f)
+            foreach (var v in _villagers)
+                if (!_jobs.ContainsKey(v))
+                    result.Add(v);
+
         return result;
     }
 
     // ── Deferred card mutation ─────────────────────────────────────────────────
 
-    /// <summary>
-    /// Called when the player's hand is discarded.
-    /// Applies any pending job changes to cards that were in hand.
-    /// </summary>
     void OnHandDiscarded()
     {
         foreach (var v in _villagers)
         {
             if (!v.HasPendingJobChange) continue;
             ApplyJobToCard(v.OwnedCard, v.PendingJobDef);
+            ApplyJobColor(v, v.PendingJobDef);
             v.HasPendingJobChange = false;
             v.PendingJobDef       = null;
         }
+    }
+
+    // ── Job colour ────────────────────────────────────────────────────────────
+
+    /// <summary>Updates the villager's body colour to match their current job.</summary>
+    void ApplyJobColor(VillagerAgent v, BuildingDefinition def)
+        => v.SetBodyColor(JobColor(def));
+
+    static Color JobColor(BuildingDefinition def)
+    {
+        if (def == null || def.type == BuildingType.BuildersHut)
+            return Color.white;
+
+        return def.type switch
+        {
+            BuildingType.Guildhall => ResourceVisuals.HexColor("FFD700"), // gold
+            BuildingType.Job       => ResourceVisuals.HexColor("C8954A"), // warm tan — woodcutter/stonecutter
+            BuildingType.Farm      => ResourceVisuals.HexColor("5CB85C"), // green
+            BuildingType.Housing   => ResourceVisuals.HexColor("5BC0DE"), // sky blue
+            BuildingType.Granary   => ResourceVisuals.HexColor("E87722"), // orange
+            _                      => ResourceVisuals.HexColor("CCCCCC"), // light grey fallback
+        };
     }
 
     // ── Card mutation ──────────────────────────────────────────────────────────
 
     /// <summary>
     /// Rewrites <paramref name="card"/> to reflect the given job.
-    /// Pass <c>null</c> for <paramref name="jobDef"/> to revert to a plain Villager card.
+    /// Null or BuildersHut → plain Villager card (+1 Hammer).
+    /// Guildhall → +2 Hammers.
+    /// Other jobs → building-specific card (+1 Wood).
     /// </summary>
     void ApplyJobToCard(CardData card, BuildingDefinition jobDef)
     {
-        if (jobDef == null)
+        if (jobDef == null || jobDef.type == BuildingType.BuildersHut)
         {
             card.cardName    = "Villager";
             card.description = "A villager puts in a day's work. +1 Hammer.";
@@ -203,7 +309,7 @@ public class VillagerManager : MonoBehaviour
         }
         else if (jobDef.type == BuildingType.Guildhall)
         {
-            card.cardName    = "Guildhall";
+            card.cardName    = "Guildhall Worker";
             card.description = "Works at the Guildhall. +2 Hammers.";
             card.effect      = _doubleHammerEffect;
         }
