@@ -21,6 +21,7 @@ public class DebugPanel : MonoBehaviour
         if (deck == null || inv == null) return;
 
         var season = SeasonManager.Instance;
+        var food   = FoodConsumptionManager.Instance;
 
         _text.text =
             $"Day:         {deck.CurrentTurn}  [{deck.CurrentPhase}]\n" +
@@ -33,6 +34,6 @@ public class DebugPanel : MonoBehaviour
             $"Villagers:   {vm?.TotalVillagerCount ?? 0}\n" +
             $"Wood:        {inv.GetCount(ResourceType.Wood)}\n" +
             $"Stone:       {inv.GetCount(ResourceType.Stone)}\n" +
-            $"Food:        {inv.GetCount(ResourceType.Food)}";
+            $"Food:        {inv.GetCount(ResourceType.Food)}  (-{food?.DailyDrain:F1}/day)";
     }
 }

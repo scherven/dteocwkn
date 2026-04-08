@@ -1,1 +1,1 @@
-public enum BuildingType { Housing, Job, Amenity, Storage, Farm }
+public enum BuildingType { Housing, Job, Amenity, Storage, Farm, Granary }

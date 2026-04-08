@@ -47,8 +47,7 @@ public class BuildSite : MonoBehaviour
         clickCol.center    = new Vector3(0f, 1.25f, 0f);
 
         _scaffoldVisual  = CreateOpenBox("Scaffold",      def, worldPos, HexColor("F0C040"));
-        _completedVisual = CreateOpenBox(def.buildingName, def, worldPos, HexColor("777777"),
-                                         addObstacle: true);
+        _completedVisual = CreateOpenBox(def.buildingName, def, worldPos, HexColor("777777"));
         _completedVisual.SetActive(false);
 
         CreateHammerProgressBar(def, worldPos);
@@ -176,7 +175,8 @@ public class BuildSite : MonoBehaviour
         _pile.Clear();
 
         BuildingManager.Instance.RegisterBuilding(Definition, transform.position, _completedVisual);
-        GridManager.Instance?.RebakeNavMesh();
+        GridManager.Instance?.RegisterBuildingFootprint(
+            transform.position, Definition.widthCells, Definition.depthCells);
 
         if (Definition.associatedCard != null)
             DeckManager.Instance.AddCardToDeck(
@@ -270,7 +270,7 @@ public class BuildSite : MonoBehaviour
     // Open-top box (4 walls + floor, no roof) so resources inside are visible.
 
     static GameObject CreateOpenBox(string rootName, BuildingDefinition def, Vector3 pos,
-                                    Color color, bool addObstacle = false)
+                                    Color color)
     {
         float w = def.widthCells;
         float d = def.depthCells;
@@ -291,9 +291,6 @@ public class BuildSite : MonoBehaviour
         AddBox(root, "Wall_S", new Vector3(0,  hy, -d / 2f + t / 2f), new Vector3(w, h, t), mat);
         AddBox(root, "Wall_E", new Vector3( w / 2f - t / 2f, hy, 0),  new Vector3(t, h, d), mat);
         AddBox(root, "Wall_W", new Vector3(-w / 2f + t / 2f, hy, 0),  new Vector3(t, h, d), mat);
-
-        if (addObstacle)
-            root.AddComponent<UnityEngine.AI.NavMeshObstacle>().carving = true;
 
         return root;
     }

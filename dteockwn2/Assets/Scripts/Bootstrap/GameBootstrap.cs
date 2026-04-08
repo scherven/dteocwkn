@@ -16,6 +16,7 @@ public class GameBootstrap : MonoBehaviour
     [SerializeField] BuildingDefinition cottageDef;
     [SerializeField] BuildingDefinition stonecutterDef;
     [SerializeField] BuildingDefinition farmDef;
+    [SerializeField] BuildingDefinition granaryDef;
 
     Material _whiteMat;
 
@@ -32,6 +33,7 @@ public class GameBootstrap : MonoBehaviour
         var terrain = CreateTerrain();
         TerrainManager.Instance.Generate(Random.Range(0, 9999));
         CreateStorehouse();
+        CreateGranary();
 
         // Spawn 5 starting villagers evenly distributed in a ring around the storehouse.
         var initialVillagers = new System.Collections.Generic.List<VillagerAgent>();
@@ -69,6 +71,7 @@ public class GameBootstrap : MonoBehaviour
         AddSingleton<GridManager>(root);
         AddSingleton<TerrainManager>(root);
         AddSingleton<SeasonManager>(root);
+        AddSingleton<FoodConsumptionManager>(root);
         AddSingleton<RoadManager>(root);
         AddSingleton<RoadTool>(root);
         AddSingleton<HammerInputHandler>(root);
@@ -105,6 +108,17 @@ public class GameBootstrap : MonoBehaviour
         var buildings = new GameObject("Buildings");
         StorehouseVisual.Create(Vector3.zero, buildings);
         GridManager.Instance.OccupyCells(3, 3, new Vector2Int(-1, -1));
+        GridManager.Instance.RegisterBuildingFootprint(Vector3.zero, 3, 3);
+    }
+
+    void CreateGranary()
+    {
+        var buildings = GameObject.Find("Buildings") ?? new GameObject("Buildings");
+        var pos = new Vector3(5f, 0f, 0f);
+        GranaryVisual.Create(pos, buildings);
+        BuildingManager.Instance.SetGranaryPosition(pos);
+        GridManager.Instance.OccupyCells(3, 3, new Vector2Int(2, -1));
+        GridManager.Instance.RegisterBuildingFootprint(pos, 3, 3);
     }
 
     // ── Villagers ─────────────────────────────────────────────────────────────
@@ -149,6 +163,7 @@ public class GameBootstrap : MonoBehaviour
     {
         GameInventory.Instance.Add(ResourceType.Wood,  5);
         GameInventory.Instance.Add(ResourceType.Stone, 3);
+        GameInventory.Instance.Add(ResourceType.Food,  20);
     }
 
     void SetupStartingDeck(System.Collections.Generic.List<VillagerAgent> initialVillagers)
@@ -205,6 +220,7 @@ public class GameBootstrap : MonoBehaviour
         market.AddEntry(new MarketEntry { building = cottageDef,     unlocked = true });
         market.AddEntry(new MarketEntry { building = stonecutterDef, unlocked = true });
         market.AddEntry(new MarketEntry { building = farmDef,        unlocked = true });
+        market.AddEntry(new MarketEntry { building = granaryDef,    unlocked = true });
     }
 
     // ── Asset creation (runtime fallback) ─────────────────────────────────────
@@ -281,7 +297,7 @@ public class GameBootstrap : MonoBehaviour
         {
             farmDef = ScriptableObject.CreateInstance<BuildingDefinition>();
             farmDef.buildingName  = "Farm";
-            farmDef.description   = "Grows food in Summer. Play the Farm card to harvest.";
+            farmDef.description   = "Plant seeds in Spring/Summer. Harvest 5 Food in Autumn.";
             farmDef.widthCells    = 2;
             farmDef.depthCells    = 2;
             farmDef.materialCost  = new List<ResourceCost> { new(ResourceType.Wood, 2) };
@@ -291,10 +307,24 @@ public class GameBootstrap : MonoBehaviour
             var farmEffect       = ScriptableObject.CreateInstance<FarmEffect>();
             var farmCard         = ScriptableObject.CreateInstance<CardData>();
             farmCard.cardName    = "Farm";
-            farmCard.description = "Harvest 3 Food. (Summer only)";
+            farmCard.description = "Spring/Summer: plant a seed. Autumn: harvest 5 Food.";
             farmCard.type        = CardType.Building;
             farmCard.effect      = farmEffect;
             farmDef.associatedCard = farmCard;
+        }
+
+        if (granaryDef == null)
+        {
+            granaryDef = ScriptableObject.CreateInstance<BuildingDefinition>();
+            granaryDef.buildingName = "Granary";
+            granaryDef.description  = "Stores food. Build near your farms.";
+            granaryDef.widthCells   = 3;
+            granaryDef.depthCells   = 3;
+            granaryDef.materialCost = new List<ResourceCost>
+                { new(ResourceType.Wood, 4), new(ResourceType.Stone, 2) };
+            granaryDef.hammerCost   = 5;
+            granaryDef.type         = BuildingType.Granary;
+            // No associated card — granary is passive storage.
         }
     }
 

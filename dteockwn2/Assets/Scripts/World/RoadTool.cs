@@ -49,6 +49,7 @@ public class RoadTool : MonoBehaviour
     void UpdateCursor()
     {
         if (Input.GetKeyDown(KeyCode.Escape)) { Toggle(); return; }
+        if (Camera.main == null || GridManager.Instance == null) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (!Physics.Raycast(ray, out RaycastHit hit, 1000f)) { HideCursor(); return; }

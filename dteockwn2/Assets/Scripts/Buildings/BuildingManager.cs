@@ -11,6 +11,13 @@ public class BuildingManager : MonoBehaviour
     [Tooltip("Position of the storehouse. Set by Bootstrap at startup.")]
     public Vector3 StorehousePosition { get; private set; } = Vector3.zero;
 
+    [Tooltip("Position of the granary. Defaults to StorehousePosition until a granary is placed.")]
+    public Vector3 GranaryPosition { get; private set; } = Vector3.zero;
+
+    // Farm seed state: keyed by rounded building position.
+    readonly Dictionary<Vector3, bool>       _seededFarms = new();
+    readonly Dictionary<Vector3, GameObject> _seedObjects  = new();
+
     // --- Coupled stat aggregates ---
     public int TotalHousingCapacity { get; private set; }
     public int TotalJobSlots        { get; private set; }
@@ -25,13 +32,39 @@ public class BuildingManager : MonoBehaviour
         Instance = this;
     }
 
-    public void SetStorehousePosition(Vector3 pos) => StorehousePosition = pos;
+    public void SetStorehousePosition(Vector3 pos)
+    {
+        StorehousePosition = pos;
+        // Default granary to storehouse until an actual granary is placed.
+        GranaryPosition = pos;
+    }
+
+    public void SetGranaryPosition(Vector3 pos) => GranaryPosition = pos;
 
     public void RegisterBuilding(BuildingDefinition def, Vector3 pos, GameObject go)
     {
         _buildings.Add((def, pos, go));
         TotalHousingCapacity += def.housingCapacity;
         TotalJobSlots        += def.jobSlots;
+        if (def.type == BuildingType.Granary)
+            SetGranaryPosition(pos);
+    }
+
+    // ── Farm seed tracking ────────────────────────────────────────────────────
+
+    static Vector3 RoundPos(Vector3 p) => new(Mathf.Round(p.x), Mathf.Round(p.y), Mathf.Round(p.z));
+
+    public bool IsFarmSeeded(Vector3 pos) =>
+        _seededFarms.TryGetValue(RoundPos(pos), out bool v) && v;
+
+    public void SetFarmSeeded(Vector3 pos, bool seeded, GameObject seedObj = null)
+    {
+        var key = RoundPos(pos);
+        _seededFarms[key] = seeded;
+        if (seeded && seedObj != null)
+            _seedObjects[key] = seedObj;
+        else if (!seeded)
+            _seedObjects.Remove(key);
     }
 
     /// <summary>

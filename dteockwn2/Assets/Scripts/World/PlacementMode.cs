@@ -28,6 +28,7 @@ public class PlacementMode : MonoBehaviour
         if (!_active) return;
 
         if (Input.GetKeyDown(KeyCode.Escape)) { Cancel(); return; }
+        if (Camera.main == null || GridManager.Instance == null) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         // Raycast to any surface; require an approximately horizontal hit (the flat terrain)

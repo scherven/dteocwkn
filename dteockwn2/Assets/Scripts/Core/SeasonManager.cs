@@ -10,7 +10,7 @@ public class SeasonManager : MonoBehaviour
 {
     public static SeasonManager Instance { get; private set; }
 
-    public const int DaysPerSeason = 4; // change here to tune season length
+    public const int DaysPerSeason = 5; // change here to tune season length
 
     public Season CurrentSeason  { get; private set; } = Season.Spring;
     public int    DayOfSeason    { get; private set; } = 0; // 0 before first Morning; 1-4 in play

@@ -18,6 +18,9 @@ public class GridManager : MonoBehaviour
     NavMeshData  _navMeshData;
     NavMeshDataInstance _navMeshHandle;
 
+    // Footprints of completed buildings baked as Not Walkable into the NavMesh.
+    readonly List<(Vector3 pos, float w, float d)> _buildingFootprints = new();
+
 
     void Awake()
     {
@@ -85,6 +88,7 @@ public class GridManager : MonoBehaviour
             CancelPreparePlot();
             return;
         }
+        if (Camera.main == null) return;
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (!Physics.Raycast(ray, out RaycastHit hit, 1000f)) return;
@@ -182,6 +186,17 @@ public class GridManager : MonoBehaviour
 
     // ── NavMesh ───────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Registers a completed building footprint so it is baked as Not Walkable.
+    /// If the NavMesh is already initialized, triggers an immediate rebake.
+    /// Safe to call before Initialize (footprint is queued and included on first bake).
+    /// </summary>
+    public void RegisterBuildingFootprint(Vector3 pos, float w, float d)
+    {
+        _buildingFootprints.Add((pos, w, d));
+        if (_navMeshHandle.valid) RebakeNavMesh();
+    }
+
     public void RebakeNavMesh()
     {
         if (_navMeshHandle.valid) NavMesh.RemoveNavMeshData(_navMeshHandle);
@@ -221,6 +236,18 @@ public class GridManager : MonoBehaviour
                     area      = RoadArea
                 });
             }
+        }
+
+        // Building footprints — baked as Not Walkable so agents route around them.
+        foreach (var (pos, w, d) in _buildingFootprints)
+        {
+            sources.Add(new NavMeshBuildSource
+            {
+                transform = Matrix4x4.Translate(new Vector3(pos.x, 0f, pos.z)),
+                shape     = NavMeshBuildSourceShape.Box,
+                size      = new Vector3(w, 0.4f, d),
+                area      = 1 // Not Walkable
+            });
         }
 
         var bounds   = new Bounds(Vector3.zero, new Vector3(110f, 10f, 110f));
